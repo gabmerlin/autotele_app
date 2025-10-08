@@ -1,0 +1,340 @@
+[
+  {
+    "task_id": "8f2ad29a-9d9f-4784-b939-c897e6c8d285",
+    "session_id": "session_393518914754",
+    "account_name": "Lilou",
+    "groups": [
+      {
+        "id": 1600542546,
+        "name": "OFM FRANCE"
+      },
+      {
+        "id": 1816385084,
+        "name": "OFM France - OF / Mym"
+      },
+      {
+        "id": 2396168142,
+        "name": "FBA - VAs/Jobs [OFM FR]🇫🇷"
+      },
+      {
+        "id": 1979977285,
+        "name": "OFM & IA | FR 🇫🇷 - CHARLES MORSE"
+      },
+      {
+        "id": 1827506537,
+        "name": "FBA - Chat [OFM FR]🇫🇷"
+      },
+      {
+        "id": 1971605165,
+        "name": "OFM | FanSuccess™"
+      },
+      {
+        "id": 2000626905,
+        "name": "OFM - IronMinds France"
+      },
+      {
+        "id": 2449592416,
+        "name": "Network OFM | FR 🇫🇷"
+      },
+      {
+        "id": 2029349894,
+        "name": "OFM / MYM GROUPE"
+      },
+      {
+        "id": 2571876638,
+        "name": "OFM | Le Cercle 🔘"
+      },
+      {
+        "id": 2149831931,
+        "name": "FR OFM🇫🇷"
+      },
+      {
+        "id": 1976499779,
+        "name": "OFM FR 101"
+      },
+      {
+        "id": 2408903115,
+        "name": "FUJI OFM"
+      },
+      {
+        "id": 1945621315,
+        "name": "E-corp | OFM FRANCE"
+      },
+      {
+        "id": 2161016936,
+        "name": "Moustache OFM 🥸"
+      },
+      {
+        "id": 2812996500,
+        "name": "OFM - ju'Traffic"
+      }
+    ],
+    "message": "test",
+    "schedule_times": [
+      "2025-10-09T08:00:00",
+      "2025-10-09T10:00:00",
+      "2025-10-10T08:00:00",
+      "2025-10-10T10:00:00",
+      "2025-10-11T08:00:00",
+      "2025-10-11T10:00:00",
+      "2025-10-12T08:00:00",
+      "2025-10-12T10:00:00",
+      "2025-10-13T08:00:00",
+      "2025-10-13T10:00:00",
+      "2025-10-14T08:00:00",
+      "2025-10-14T10:00:00",
+      "2025-10-15T08:00:00",
+      "2025-10-15T10:00:00",
+      "2025-10-16T08:00:00",
+      "2025-10-16T10:00:00",
+      "2025-10-17T08:00:00",
+      "2025-10-17T10:00:00",
+      "2025-10-18T08:00:00",
+      "2025-10-18T10:00:00",
+      "2025-10-19T08:00:00",
+      "2025-10-19T10:00:00",
+      "2025-10-20T08:00:00",
+      "2025-10-20T10:00:00",
+      "2025-10-21T08:00:00",
+      "2025-10-21T10:00:00",
+      "2025-10-22T08:00:00",
+      "2025-10-22T10:00:00",
+      "2025-10-23T08:00:00",
+      "2025-10-23T10:00:00",
+      "2025-10-24T08:00:00",
+      "2025-10-24T10:00:00",
+      "2025-10-25T08:00:00",
+      "2025-10-25T10:00:00",
+      "2025-10-26T08:00:00",
+      "2025-10-26T10:00:00",
+      "2025-10-27T08:00:00",
+      "2025-10-27T10:00:00",
+      "2025-10-28T08:00:00",
+      "2025-10-28T10:00:00",
+      "2025-10-29T08:00:00",
+      "2025-10-29T10:00:00",
+      "2025-10-30T08:00:00",
+      "2025-10-30T10:00:00",
+      "2025-10-31T08:00:00",
+      "2025-10-31T10:00:00",
+      "2025-11-01T08:00:00",
+      "2025-11-01T10:00:00",
+      "2025-11-02T08:00:00",
+      "2025-11-02T10:00:00",
+      "2025-11-03T08:00:00",
+      "2025-11-03T10:00:00",
+      "2025-11-04T08:00:00",
+      "2025-11-04T10:00:00",
+      "2025-11-05T08:00:00",
+      "2025-11-05T10:00:00",
+      "2025-11-06T08:00:00",
+      "2025-11-06T10:00:00"
+    ],
+    "file_path": null,
+    "status": "cancelled",
+    "created_at": "2025-10-08T17:24:51.834424",
+    "results": {
+      "1600542546": {
+        "success": true,
+        "error": null,
+        "group_title": "OFM FRANCE",
+        "sent_count": 58,
+        "total_count": 58
+      },
+      "1816385084": {
+        "success": false,
+        "error": "1 échec(s)",
+        "group_title": "OFM France - OF / Mym",
+        "sent_count": 0,
+        "total_count": 58
+      },
+      "2396168142": {
+        "success": true,
+        "error": null,
+        "group_title": "FBA - VAs/Jobs [OFM FR]🇫🇷",
+        "sent_count": 58,
+        "total_count": 58
+      },
+      "1979977285": {
+        "success": true,
+        "error": null,
+        "group_title": "OFM & IA | FR 🇫🇷 - CHARLES MORSE",
+        "sent_count": 58,
+        "total_count": 58
+      },
+      "1827506537": {
+        "success": true,
+        "error": null,
+        "group_title": "FBA - Chat [OFM FR]🇫🇷",
+        "sent_count": 58,
+        "total_count": 58
+      },
+      "1971605165": {
+        "success": true,
+        "error": null,
+        "group_title": "OFM | FanSuccess™",
+        "sent_count": 58,
+        "total_count": 58
+      }
+    }
+  },
+  {
+    "task_id": "0ec65ecf-9817-44bd-9d23-ffa48897d48f",
+    "session_id": "session_33617327754",
+    "account_name": "Marie",
+    "groups": [
+      {
+        "id": 2183207690,
+        "name": "OFM IA 🇫🇷 Ulysse"
+      },
+      {
+        "id": 1600542546,
+        "name": "OFM FRANCE"
+      },
+      {
+        "id": 1816385084,
+        "name": "OFM France - OF / Mym"
+      },
+      {
+        "id": 2396168142,
+        "name": "FBA - VAs/Jobs [OFM FR]🇫🇷"
+      },
+      {
+        "id": 1979977285,
+        "name": "OFM & IA | FR 🇫🇷 - CHARLES MORSE"
+      },
+      {
+        "id": 1971605165,
+        "name": "OFM | FanSuccess™"
+      },
+      {
+        "id": 2000626905,
+        "name": "OFM - IronMinds France"
+      },
+      {
+        "id": 2449592416,
+        "name": "Network OFM | FR 🇫🇷"
+      },
+      {
+        "id": 2126961037,
+        "name": "OFM V 🌐"
+      },
+      {
+        "id": 2029349894,
+        "name": "OFM / MYM GROUPE"
+      },
+      {
+        "id": 2571876638,
+        "name": "OFM | Le Cercle 🔘"
+      },
+      {
+        "id": 2149831931,
+        "name": "FR OFM🇫🇷"
+      },
+      {
+        "id": 2408903115,
+        "name": "FUJI OFM"
+      },
+      {
+        "id": 2244124831,
+        "name": "BADDIES | OFM 👑"
+      },
+      {
+        "id": 1945621315,
+        "name": "E-corp | OFM FRANCE"
+      }
+    ],
+    "message": "test",
+    "schedule_times": [
+      "2025-10-10T12:00:00",
+      "2025-10-11T12:00:00",
+      "2025-10-12T12:00:00",
+      "2025-10-13T12:00:00",
+      "2025-10-14T12:00:00",
+      "2025-10-15T12:00:00",
+      "2025-10-16T12:00:00",
+      "2025-10-17T12:00:00",
+      "2025-10-18T12:00:00",
+      "2025-10-19T12:00:00",
+      "2025-10-20T12:00:00",
+      "2025-10-21T12:00:00",
+      "2025-10-22T12:00:00",
+      "2025-10-23T12:00:00",
+      "2025-10-24T12:00:00",
+      "2025-10-25T12:00:00",
+      "2025-10-26T12:00:00",
+      "2025-10-27T12:00:00",
+      "2025-10-28T12:00:00",
+      "2025-10-29T12:00:00",
+      "2025-10-30T12:00:00",
+      "2025-10-31T12:00:00",
+      "2025-11-01T12:00:00",
+      "2025-11-02T12:00:00",
+      "2025-11-03T12:00:00",
+      "2025-11-04T12:00:00",
+      "2025-11-05T12:00:00",
+      "2025-11-06T12:00:00"
+    ],
+    "file_path": null,
+    "status": "cancelled",
+    "created_at": "2025-10-08T17:25:23.298210",
+    "results": {
+      "2183207690": {
+        "success": true,
+        "error": null,
+        "group_title": "OFM IA 🇫🇷 Ulysse",
+        "sent_count": 28,
+        "total_count": 28
+      },
+      "1600542546": {
+        "success": true,
+        "error": null,
+        "group_title": "OFM FRANCE",
+        "sent_count": 28,
+        "total_count": 28
+      },
+      "1816385084": {
+        "success": true,
+        "error": null,
+        "group_title": "OFM France - OF / Mym",
+        "sent_count": 28,
+        "total_count": 28
+      },
+      "2396168142": {
+        "success": true,
+        "error": null,
+        "group_title": "FBA - VAs/Jobs [OFM FR]🇫🇷",
+        "sent_count": 28,
+        "total_count": 28
+      },
+      "1979977285": {
+        "success": true,
+        "error": null,
+        "group_title": "OFM & IA | FR 🇫🇷 - CHARLES MORSE",
+        "sent_count": 28,
+        "total_count": 28
+      },
+      "1971605165": {
+        "success": true,
+        "error": null,
+        "group_title": "OFM | FanSuccess™",
+        "sent_count": 28,
+        "total_count": 28
+      },
+      "2000626905": {
+        "success": true,
+        "error": null,
+        "group_title": "OFM - IronMinds France",
+        "sent_count": 28,
+        "total_count": 28
+      },
+      "2449592416": {
+        "success": true,
+        "error": null,
+        "group_title": "Network OFM | FR 🇫🇷",
+        "sent_count": 28,
+        "total_count": 28
+      }
+    }
+  }
+]

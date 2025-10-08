@@ -1,0 +1,39 @@
+{
+  "app": {
+    "name": "AutoTele",
+    "version": "1.0.0",
+    "language": "fr"
+  },
+  "telegram": {
+    "rate_limit_delay": 3,
+    "max_messages_per_minute": 20,
+    "max_groups_warning": 50
+  },
+  "btcpay": {
+    "server_url": "",
+    "store_id": "",
+    "api_key": "",
+    "webhook_secret": "",
+    "subscription_price": 29.99,
+    "currency": "EUR",
+    "trial_days": 7,
+    "check_interval_hours": 24
+  },
+  "security": {
+    "session_encryption": true,
+    "auto_logout_minutes": 0,
+    "require_password": false
+  },
+  "ui": {
+    "theme": "light",
+    "font_family": "Segoe UI",
+    "font_size": 10,
+    "show_notifications": true
+  },
+  "paths": {
+    "sessions_dir": "sessions",
+    "logs_dir": "logs",
+    "config_dir": "config",
+    "temp_dir": "temp"
+  }
+}

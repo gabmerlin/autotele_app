@@ -1,5 +1,5 @@
 """
-Gestionnaire de sessions Telegram chiffrées
+Gestionnaire de sessions Telegram
 """
 import os
 import json
@@ -7,18 +7,16 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
 
-from utils.crypto import SessionEncryptor
 from utils.logger import get_logger
 from utils.config import get_config
 
 
 class SessionManager:
-    """Gère les sessions Telegram chiffrées"""
+    """Gère les sessions Telegram"""
     
     def __init__(self):
         self.config = get_config()
         self.logger = get_logger()
-        self.encryptor = SessionEncryptor()
         self.sessions_dir = Path(self.config.get("paths.sessions_dir"))
         self.sessions_dir.mkdir(exist_ok=True)
         
@@ -102,56 +100,6 @@ class SessionManager:
     def get_session_file_path(self, session_id: str) -> Path:
         """Retourne le chemin du fichier de session"""
         return self.sessions_dir / f"{session_id}.session"
-    
-    def encrypt_session_file(self, session_id: str):
-        """Chiffre un fichier de session"""
-        session_file = self.get_session_file_path(session_id)
-        encrypted_file = self.sessions_dir / f"{session_id}.enc"
-        
-        if session_file.exists():
-            self.encryptor.encrypt_file(str(session_file), str(encrypted_file))
-            # Optionnel : supprimer le fichier non chiffré
-            # session_file.unlink()
-            self.logger.info(f"Session chiffrée: {session_id}")
-    
-    def decrypt_session_file(self, session_id: str):
-        """Déchiffre un fichier de session"""
-        encrypted_file = self.sessions_dir / f"{session_id}.enc"
-        session_file = self.get_session_file_path(session_id)
-        
-        if encrypted_file.exists():
-            self.encryptor.decrypt_file(str(encrypted_file), str(session_file))
-            self.logger.info(f"Session déchiffrée: {session_id}")
-    
-    def export_session(self, session_id: str, export_path: str):
-        """Exporte une session chiffrée"""
-        encrypted_file = self.sessions_dir / f"{session_id}.enc"
-        
-        if not encrypted_file.exists():
-            # Chiffrer d'abord si nécessaire
-            self.encrypt_session_file(session_id)
-        
-        # Copier le fichier chiffré
-        import shutil
-        shutil.copy(encrypted_file, export_path)
-        
-        self.logger.info(f"Session exportée: {session_id} -> {export_path}")
-    
-    def import_session(self, import_path: str, session_info: Dict) -> str:
-        """Importe une session chiffrée"""
-        session_id = session_info["session_id"]
-        encrypted_file = self.sessions_dir / f"{session_id}.enc"
-        
-        # Copier le fichier
-        import shutil
-        shutil.copy(import_path, encrypted_file)
-        
-        # Ajouter à l'index
-        self.sessions_index[session_id] = session_info
-        self._save_index()
-        
-        self.logger.info(f"Session importée: {session_id}")
-        return session_id
     
     def update_session_status(self, session_id: str, status: str):
         """Met à jour le statut d'une session"""

@@ -17,9 +17,10 @@ class Config:
             "language": "fr"
         },
         "telegram": {
-            "rate_limit_delay": 3,  # secondes entre chaque message
-            "max_messages_per_minute": 20,
-            "max_groups_warning": 50
+            "max_groups_warning": 50,
+            "rate_limit_delay": 0.05,  # 50ms entre messages (20 req/sec)
+            "max_parallel_tasks": 5,   # Maximum 5 comptes en parallèle
+            "scheduler_interval": 2    # Vérification toutes les 2 secondes
         },
         "btcpay": {
             "server_url": "",

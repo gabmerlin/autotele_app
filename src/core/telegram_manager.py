@@ -13,30 +13,36 @@ from telethon.tl.types import InputPeerEmpty
 from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, FloodWaitError
 
 from core.session_manager import SessionManager
-from core.cache_manager import cache_manager
 from utils.logger import get_logger
 from utils.config import get_config
 
 
 # ============================================================================
-# CREDENTIALS API TELEGRAM PAR DÉFAUT
+# CREDENTIALS API TELEGRAM
 # ============================================================================
-# Ces credentials sont utilisés pour tous les utilisateurs de l'application.
-# Obtenez vos propres credentials sur https://my.telegram.org
-# 
-# IMPORTANT : Gardez ces valeurs PRIVÉES et ne les commitez pas dans Git !
-# En production, utilisez des variables d'environnement ou un fichier de config sécurisé.
+# IMPORTANT : Vous DEVEZ obtenir vos propres credentials sur https://my.telegram.org
+# 1. Allez sur https://my.telegram.org
+# 2. Connectez-vous avec votre numéro Telegram
+# 3. Créez une nouvelle application
+# 4. Copiez api_id et api_hash ici
 # ============================================================================
 
-DEFAULT_API_ID = "21211112"  # Votre api_id
-DEFAULT_API_HASH = "64342ccdb7588fe8648219265ff5f846"  # Votre api_hash
-
-# Alternative : Charger depuis variable d'environnement
 import os
-if os.getenv("AUTOTELE_API_ID"):
-    DEFAULT_API_ID = os.getenv("AUTOTELE_API_ID")
-if os.getenv("AUTOTELE_API_HASH"):
-    DEFAULT_API_HASH = os.getenv("AUTOTELE_API_HASH")
+
+# Charger les credentials depuis le fichier de configuration sécurisé
+try:
+    import sys
+    from pathlib import Path
+    # Ajouter le dossier config au path
+    config_dir = Path(__file__).parent.parent.parent / "config"
+    sys.path.insert(0, str(config_dir))
+    from api_credentials import API_ID, API_HASH
+    DEFAULT_API_ID = int(API_ID)
+    DEFAULT_API_HASH = API_HASH
+except ImportError:
+    # Fallback si le fichier de config n'existe pas
+    DEFAULT_API_ID = 21211112
+    DEFAULT_API_HASH = "64342ccdb7588fe8648219265ff5f846"
 
 
 class TelegramAccount:
@@ -104,12 +110,26 @@ class TelegramAccount:
             if self.client is None:
                 session_file = str(self.session_manager.get_session_file_path(self.session_id))
                 self.client = TelegramClient(session_file, self.api_id, self.api_hash)
+            
+            # S'assurer que le client est connecté
+            if not self.client.is_connected():
                 await self.client.connect()
             
+            # Envoyer la demande de code
             await self.client.send_code_request(self.phone)
+            self.logger.info(f"Code de vérification envoyé à {self.phone}")
             return True
         except Exception as e:
             self.logger.error(f"Erreur envoi code: {e}")
+            # Essayer de déconnecter et reconnecter
+            try:
+                if self.client:
+                    await self.client.disconnect()
+                    await self.client.connect()
+                    await self.client.send_code_request(self.phone)
+                    return True
+            except:
+                pass
             return False
     
     async def sign_in(self, code: str, password: str = None) -> Tuple[bool, str]:
@@ -118,6 +138,10 @@ class TelegramAccount:
         Retourne (success, error_message)
         """
         try:
+            # S'assurer que le client est connecté
+            if not self.client.is_connected():
+                await self.client.connect()
+            
             await self.client.sign_in(self.phone, code)
             self.is_connected = True
             
@@ -132,6 +156,7 @@ class TelegramAccount:
                     self.is_connected = True
                     
                     # La session est automatiquement sauvegardée par Telethon
+                    self.logger.info(f"Authentification 2FA réussie: {self.account_name}")
                     return True, ""
                 except Exception as e:
                     return False, f"Mot de passe 2FA incorrect: {e}"
@@ -144,15 +169,8 @@ class TelegramAccount:
     
     async def get_dialogs(self) -> List[Dict]:
         """
-        Récupère la liste des dialogues (groupes, canaux, conversations) - ULTRA RAPIDE avec cache
+        Récupère la liste des dialogues (groupes, canaux, conversations)
         """
-        # Vérifier le cache d'abord
-        cache_key = f"dialogs_{id(self)}"
-        cached_dialogs = cache_manager.get(cache_key, "dialogs")
-        if cached_dialogs:
-            print(f"⚡ Groupes récupérés depuis le cache (ultra rapide)")
-            return cached_dialogs
-        
         try:
             # S'assurer que le client est connecté
             if not self.client.is_connected():
@@ -178,17 +196,12 @@ class TelegramAccount:
                     }
                     dialogs.append(dialog_info)
             
-            # Mettre en cache pour la prochaine fois
-            cache_manager.set(cache_key, dialogs, "dialogs")
-            print(f"💾 {len(dialogs)} groupes mis en cache")
-            
             # Trier par type et taille
             dialogs.sort(key=lambda x: (
                 0 if x["type"] == "group" else 1,  # Groupes en premier
                 -x["participants_count"]  # Plus gros groupes en premier
             ))
             
-            self.logger.info(f"Récupéré {len(dialogs)} groupes/canaux")
             return dialogs
         except Exception as e:
             self.logger.error(f"Erreur récupération dialogues: {e}")
@@ -360,36 +373,70 @@ class TelegramManager:
         success, error = await account.sign_in(code, password)
         
         if success:
+            account.is_connected = True
             self.session_manager.update_session_status(session_id, "active")
         
         return success, error
     
+    async def resend_code(self, session_id: str) -> Tuple[bool, str]:
+        """
+        Renvoie un code de vérification pour un compte non autorisé
+        """
+        if session_id not in self.accounts:
+            return False, "Session introuvable"
+        
+        account = self.accounts[session_id]
+        success = await account.send_code_request()
+        
+        if success:
+            return True, "Code de vérification renvoyé"
+        else:
+            return False, "Erreur lors de l'envoi du code"
+    
     async def load_existing_sessions(self):
         """Charge les sessions existantes"""
-        sessions = self.session_manager.get_active_sessions()
+        sessions = self.session_manager.list_sessions()
+        self.logger.info(f"Chargement de {len(sessions)} sessions...")
         
         for session_info in sessions:
             try:
                 session_id = session_info["session_id"]
+                
+                # Vérifier si le fichier de session existe
+                session_file = self.session_manager.get_session_file_path(session_id)
+                if not session_file.exists():
+                    self.logger.warning(f"Fichier de session manquant: {session_id}")
+                    self.session_manager.delete_session(session_id)
+                    continue
+                
                 account = TelegramAccount(
                     session_id,
                     session_info["phone"],
-                    session_info["api_id"],
-                    session_info["api_hash"],
+                    session_info.get("api_id", DEFAULT_API_ID),
+                    session_info.get("api_hash", DEFAULT_API_HASH),
                     session_info.get("account_name")
                 )
+                
+                # Créer le client
+                session_file_str = str(session_file)
+                account.client = TelegramClient(session_file_str, account.api_id, account.api_hash)
                 
                 # Tenter de se connecter
                 connected = await account.connect()
                 if connected:
                     self.accounts[session_id] = account
-                    self.logger.info(f"Session chargée: {session_id}")
+                    self.logger.info(f"✅ Session chargée: {session_info['phone']}")
                 else:
-                    self.logger.warning(f"Session non autorisée: {session_id}")
+                    self.logger.warning(f"❌ Session non autorisée: {session_info['phone']}")
+                    # Marquer comme non autorisée mais la garder dans les comptes
+                    account.is_connected = False
+                    self.accounts[session_id] = account
                     self.session_manager.update_session_status(session_id, "unauthorized")
                     
             except Exception as e:
-                self.logger.error(f"Erreur chargement session {session_id}: {e}")
+                self.logger.error(f"Erreur chargement session {session_info.get('phone', 'unknown')}: {e}")
+        
+        self.logger.info(f"Sessions chargées: {len(self.accounts)} comptes actifs")
     
     def get_account(self, session_id: str) -> Optional[TelegramAccount]:
         """Récupère un compte par son ID"""
@@ -422,42 +469,6 @@ class TelegramManager:
             await account.disconnect()
         
         self.logger.info("Tous les comptes déconnectés")
-    
-    def load_existing_sessions(self):
-        """Charge les sessions existantes"""
-        sessions = self.session_manager.list_sessions()
-        
-        for session_data in sessions:
-            try:
-                account = TelegramAccount(
-                    session_data["session_id"],
-                    session_data["phone"],
-                    session_data.get("api_id"),
-                    session_data.get("api_hash"),
-                    session_data.get("account_name")
-                )
-                
-                # Vérifier si le fichier de session existe
-                session_file = self.session_manager.get_session_file_path(session_data["session_id"])
-                if session_file.exists():
-                    # Créer le client
-                    session_file_str = str(session_file)
-                    account.client = TelegramClient(session_file_str, account.api_id, account.api_hash)
-                    
-                    # Marquer comme non connecté par défaut (sera vérifié plus tard)
-                    account.is_connected = False
-                    
-                    self.accounts[session_data["session_id"]] = account
-                    self.logger.info(f"📁 Session trouvée: {session_data['phone']} (connexion en cours)")
-                else:
-                    # Fichier de session manquant, supprimer l'entrée
-                    self.session_manager.delete_session(session_data["session_id"])
-                    self.logger.info(f"Session manquante supprimée: {session_data['phone']}")
-                
-            except Exception as e:
-                self.logger.error(f"Erreur chargement session {session_data['session_id']}: {e}")
-                # Supprimer la session corrompue
-                self.session_manager.delete_session(session_data["session_id"])
     
     async def _connect_account(self, account):
         """Connecte un compte spécifique"""

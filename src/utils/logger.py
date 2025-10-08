@@ -26,17 +26,22 @@ class AutoTeleLogger:
         file_handler = logging.FileHandler(log_file, encoding='utf-8')
         file_handler.setLevel(logging.INFO)
         
-        # Handler pour console
+        # Handler pour console (afficher tous les logs INFO et plus)
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.WARNING)
+        console_handler.setLevel(logging.INFO)
         
-        # Format
-        formatter = logging.Formatter(
+        # Format pour fichier (détaillé)
+        file_formatter = logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
-        file_handler.setFormatter(formatter)
-        console_handler.setFormatter(formatter)
+        file_handler.setFormatter(file_formatter)
+        
+        # Format pour console (simplifié et coloré)
+        console_formatter = logging.Formatter(
+            '[%(levelname)s] %(message)s'
+        )
+        console_handler.setFormatter(console_formatter)
         
         self.logger.addHandler(file_handler)
         self.logger.addHandler(console_handler)
