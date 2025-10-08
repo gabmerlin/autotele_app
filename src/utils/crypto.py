@@ -6,7 +6,7 @@ import base64
 import hashlib
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
 
 
@@ -61,7 +61,7 @@ class SessionEncryptor:
     
     def _derive_key(self, password: str, salt: bytes) -> bytes:
         """Dérive une clé de chiffrement à partir du mot de passe"""
-        kdf = PBKDF2(
+        kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
             salt=salt,

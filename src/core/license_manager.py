@@ -49,7 +49,7 @@ class LicenseManager:
             "expiry_date": None,
             "status": "trial",
             "trial_start": datetime.now().isoformat(),
-            "trial_end": (datetime.now() + timedelta(days=self.trial_days)).isoformat(),
+            "trial_end": (datetime.now() + timedelta(days=7)).isoformat(),
             "machine_id": self._get_machine_id(),
             "last_verified": None
         }

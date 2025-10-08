@@ -13,6 +13,7 @@ from telethon.tl.types import InputPeerEmpty
 from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, FloodWaitError
 
 from core.session_manager import SessionManager
+from core.cache_manager import cache_manager
 from utils.logger import get_logger
 from utils.config import get_config
 
@@ -27,8 +28,8 @@ from utils.config import get_config
 # En production, utilisez des variables d'environnement ou un fichier de config sécurisé.
 # ============================================================================
 
-DEFAULT_API_ID = "YOUR_API_ID_HERE"  # Remplacez par votre api_id
-DEFAULT_API_HASH = "YOUR_API_HASH_HERE"  # Remplacez par votre api_hash
+DEFAULT_API_ID = "21211112"  # Votre api_id
+DEFAULT_API_HASH = "64342ccdb7588fe8648219265ff5f846"  # Votre api_hash
 
 # Alternative : Charger depuis variable d'environnement
 import os
@@ -86,11 +87,16 @@ class TelegramAccount:
             return False
     
     async def disconnect(self):
-        """Déconnecte le compte"""
+        """Déconnecte le compte (optionnel - pour forcer la déconnexion)"""
         if self.client:
             await self.client.disconnect()
             self.is_connected = False
             self.logger.info(f"Compte déconnecté: {self.account_name}")
+    
+    def keep_connected(self):
+        """Marque le compte comme devant rester connecté"""
+        # Ne pas déconnecter automatiquement
+        pass
     
     async def send_code_request(self) -> bool:
         """Envoie la demande de code de vérification"""
@@ -114,6 +120,8 @@ class TelegramAccount:
         try:
             await self.client.sign_in(self.phone, code)
             self.is_connected = True
+            
+            # La session est automatiquement sauvegardée par Telethon
             self.logger.info(f"Authentification réussie: {self.account_name}")
             return True, ""
         except SessionPasswordNeededError:
@@ -122,6 +130,8 @@ class TelegramAccount:
                 try:
                     await self.client.sign_in(password=password)
                     self.is_connected = True
+                    
+                    # La session est automatiquement sauvegardée par Telethon
                     return True, ""
                 except Exception as e:
                     return False, f"Mot de passe 2FA incorrect: {e}"
@@ -134,27 +144,51 @@ class TelegramAccount:
     
     async def get_dialogs(self) -> List[Dict]:
         """
-        Récupère la liste des dialogues (groupes, canaux, conversations)
+        Récupère la liste des dialogues (groupes, canaux, conversations) - ULTRA RAPIDE avec cache
         """
-        if not self.is_connected:
-            return []
+        # Vérifier le cache d'abord
+        cache_key = f"dialogs_{id(self)}"
+        cached_dialogs = cache_manager.get(cache_key, "dialogs")
+        if cached_dialogs:
+            print(f"⚡ Groupes récupérés depuis le cache (ultra rapide)")
+            return cached_dialogs
         
         try:
+            # S'assurer que le client est connecté
+            if not self.client.is_connected():
+                await self.client.connect()
+            
             dialogs = []
             async for dialog in self.client.iter_dialogs():
                 entity = dialog.entity
                 
-                # Filtrer uniquement les groupes et canaux où on peut écrire
+                # Récupérer TOUS les groupes et canaux (même ceux en lecture seule)
                 if isinstance(entity, (Channel, Chat)):
                     dialog_info = {
                         "id": entity.id,
                         "title": dialog.title,
                         "type": "channel" if isinstance(entity, Channel) else "group",
                         "username": getattr(entity, 'username', None),
-                        "can_send": self._can_send_messages(entity)
+                        "can_send": self._can_send_messages(entity),
+                        "participants_count": getattr(entity, 'participants_count', 0),
+                        "is_broadcast": getattr(entity, 'broadcast', False),
+                        "is_megagroup": getattr(entity, 'megagroup', False),
+                        "is_member": not getattr(entity, 'left', False) and not getattr(entity, 'kicked', False),
+                        "is_admin": getattr(entity, 'admin_rights', None) is not None or getattr(entity, 'creator', False)
                     }
                     dialogs.append(dialog_info)
             
+            # Mettre en cache pour la prochaine fois
+            cache_manager.set(cache_key, dialogs, "dialogs")
+            print(f"💾 {len(dialogs)} groupes mis en cache")
+            
+            # Trier par type et taille
+            dialogs.sort(key=lambda x: (
+                0 if x["type"] == "group" else 1,  # Groupes en premier
+                -x["participants_count"]  # Plus gros groupes en premier
+            ))
+            
+            self.logger.info(f"Récupéré {len(dialogs)} groupes/canaux")
             return dialogs
         except Exception as e:
             self.logger.error(f"Erreur récupération dialogues: {e}")
@@ -164,12 +198,15 @@ class TelegramAccount:
         """Vérifie si on peut envoyer des messages dans ce groupe/canal"""
         try:
             if isinstance(entity, Channel):
-                return entity.creator or (entity.admin_rights and entity.admin_rights.post_messages)
+                # Pour les canaux : être membre (pas forcément admin)
+                return not entity.left and not entity.kicked
             elif isinstance(entity, Chat):
+                # Pour les groupes : être membre (pas forcément admin)
                 return not entity.kicked and not entity.left
             return False
         except Exception:
-            return False
+            # En cas d'erreur, considérer comme utilisable
+            return True
     
     async def schedule_message(self, chat_id: int, message: str, 
                               schedule_date: datetime,
@@ -182,32 +219,34 @@ class TelegramAccount:
             return False, "Compte non connecté"
         
         try:
-            # Vérifier rate limit
-            config = get_config()
-            delay = config.get("telegram.rate_limit_delay", 3)
-            await asyncio.sleep(delay)
+            # S'assurer que chat_id est un int
+            if isinstance(chat_id, str):
+                chat_id = int(chat_id)
             
-            # Envoyer le message planifié
-            if file_path and Path(file_path).exists():
-                await self.client.send_file(
-                    chat_id,
-                    file_path,
-                    caption=message,
-                    schedule=schedule_date
-                )
+            # Vérifier si c'est un envoi immédiat (now) ou programmé
+            now = datetime.now()
+            time_diff = (schedule_date - now).total_seconds()
+            is_immediate = time_diff < 60  # Moins d'1 minute = envoi immédiat
+            
+            if is_immediate:
+                # Envoi immédiat (sans schedule)
+                if file_path and Path(file_path).exists():
+                    await self.client.send_file(chat_id, file_path, caption=message)
+                else:
+                    await self.client.send_message(chat_id, message)
             else:
-                await self.client.send_message(
-                    chat_id,
-                    message,
-                    schedule=schedule_date
-                )
+                # Programmation dans Telegram
+                if file_path and Path(file_path).exists():
+                    await self.client.send_file(chat_id, file_path, caption=message, schedule=schedule_date)
+                else:
+                    await self.client.send_message(chat_id, message, schedule=schedule_date)
             
-            self.logger.info(f"Message planifié pour {schedule_date} dans chat {chat_id}")
             return True, ""
             
         except FloodWaitError as e:
-            error_msg = f"Rate limit atteint. Attendez {e.seconds} secondes."
-            self.logger.warning(error_msg)
+            error_msg = f"🛑 RATE LIMIT : Attendez {e.seconds} secondes ({e.seconds//60} minutes)"
+            self.logger.error(error_msg)
+            print(f"\n🛑 RATE LIMIT TELEGRAM : {e.seconds}s d'attente requise")
             return False, error_msg
         except Exception as e:
             error_msg = f"Erreur planification message: {e}"
@@ -231,6 +270,40 @@ class TelegramAccount:
         except Exception as e:
             self.logger.error(f"Erreur récupération infos compte: {e}")
             return None
+    
+    async def delete_scheduled_messages(self, chat_id: int, message_ids: list = None) -> Tuple[bool, str]:
+        """
+        Supprime des messages programmés dans un groupe
+        Si message_ids est None, supprime TOUS les messages programmés du groupe
+        """
+        if not self.is_connected:
+            return False, "Compte non connecté"
+        
+        try:
+            # S'assurer que chat_id est un int
+            if isinstance(chat_id, str):
+                chat_id = int(chat_id)
+            
+            if message_ids:
+                # Supprimer des messages spécifiques
+                await self.client.delete_messages(chat_id, message_ids)
+                self.logger.info(f"🗑️ {len(message_ids)} message(s) programmé(s) supprimé(s) dans chat {chat_id}")
+            else:
+                # Récupérer tous les messages programmés et les supprimer
+                scheduled_messages = await self.client.get_messages(chat_id, scheduled=True, limit=100)
+                if scheduled_messages:
+                    msg_ids = [msg.id for msg in scheduled_messages]
+                    await self.client.delete_messages(chat_id, msg_ids)
+                    self.logger.info(f"🗑️ {len(msg_ids)} message(s) programmé(s) supprimé(s) dans chat {chat_id}")
+                else:
+                    self.logger.info(f"Aucun message programmé trouvé dans chat {chat_id}")
+            
+            return True, ""
+            
+        except Exception as e:
+            error_msg = f"Erreur suppression messages programmés: {e}"
+            self.logger.error(error_msg)
+            return False, error_msg
 
 
 class TelegramManager:
@@ -349,4 +422,143 @@ class TelegramManager:
             await account.disconnect()
         
         self.logger.info("Tous les comptes déconnectés")
+    
+    def load_existing_sessions(self):
+        """Charge les sessions existantes"""
+        sessions = self.session_manager.list_sessions()
+        
+        for session_data in sessions:
+            try:
+                account = TelegramAccount(
+                    session_data["session_id"],
+                    session_data["phone"],
+                    session_data.get("api_id"),
+                    session_data.get("api_hash"),
+                    session_data.get("account_name")
+                )
+                
+                # Vérifier si le fichier de session existe
+                session_file = self.session_manager.get_session_file_path(session_data["session_id"])
+                if session_file.exists():
+                    # Créer le client
+                    session_file_str = str(session_file)
+                    account.client = TelegramClient(session_file_str, account.api_id, account.api_hash)
+                    
+                    # Marquer comme non connecté par défaut (sera vérifié plus tard)
+                    account.is_connected = False
+                    
+                    self.accounts[session_data["session_id"]] = account
+                    self.logger.info(f"📁 Session trouvée: {session_data['phone']} (connexion en cours)")
+                else:
+                    # Fichier de session manquant, supprimer l'entrée
+                    self.session_manager.delete_session(session_data["session_id"])
+                    self.logger.info(f"Session manquante supprimée: {session_data['phone']}")
+                
+            except Exception as e:
+                self.logger.error(f"Erreur chargement session {session_data['session_id']}: {e}")
+                # Supprimer la session corrompue
+                self.session_manager.delete_session(session_data["session_id"])
+    
+    async def _connect_account(self, account):
+        """Connecte un compte spécifique"""
+        try:
+            if account.client:
+                await account.client.connect()
+                
+                if account.client.is_connected():
+                    # Tester une opération simple
+                    me = await account.client.get_me()
+                    if me:
+                        account.is_connected = True
+                        self.logger.info(f"✅ Connexion maintenue: {account.phone}")
+                        return True
+                    else:
+                        account.is_connected = False
+                        self.logger.warning(f"❌ Connexion échouée: {account.phone} (pas d'utilisateur)")
+                        return False
+                else:
+                    account.is_connected = False
+                    self.logger.warning(f"❌ Connexion échouée: {account.phone} (client non connecté)")
+                    return False
+            else:
+                account.is_connected = False
+                self.logger.warning(f"❌ Pas de client: {account.phone}")
+                return False
+                
+        except Exception as e:
+            account.is_connected = False
+            self.logger.error(f"❌ Erreur connexion {account.phone}: {e}")
+            return False
+
+    async def verify_all_connections(self):
+        """Vérifie réellement la connexion de tous les comptes"""
+        for account in self.accounts.values():
+            await self._connect_account(account)
+    
+    async def reconnect_account(self, session_id: str) -> Tuple[bool, str]:
+        """Reconnecte un compte spécifique sans affecter les autres"""
+        if session_id not in self.accounts:
+            return False, "Compte introuvable"
+        
+        account = self.accounts[session_id]
+        
+        try:
+            # Déconnecter d'abord si nécessaire
+            if account.client and account.client.is_connected():
+                await account.client.disconnect()
+            
+            # Reconnecter
+            success = await self._connect_account(account)
+            
+            if success:
+                return True, f"✅ {account.phone} reconnecté avec succès"
+            else:
+                return False, f"❌ Échec de la reconnexion pour {account.phone}"
+                
+        except Exception as e:
+            return False, f"❌ Erreur reconnexion {account.phone}: {str(e)}"
+    
+    async def save_session_after_login(self, session_id: str):
+        """Sauvegarde la session après connexion réussie"""
+        if session_id in self.accounts:
+            account = self.accounts[session_id]
+            if account.is_connected:
+                # Vérifier que le fichier de session existe
+                session_file = self.session_manager.get_session_file_path(session_id)
+                if session_file.exists():
+                    self.logger.info(f"Session sauvegardée: {account.phone} -> {session_file}")
+                    return True
+                else:
+                    self.logger.error(f"Session non sauvegardée: {account.phone}")
+                    return False
+        return False
+    
+    
+    def debug_sessions(self):
+        """Affiche des informations de debug sur les sessions"""
+        self.logger.info("=== DEBUG SESSIONS ===")
+        
+        # Vérifier le dossier des sessions
+        sessions_dir = self.session_manager.sessions_dir
+        self.logger.info(f"Dossier sessions: {sessions_dir}")
+        self.logger.info(f"Dossier existe: {sessions_dir.exists()}")
+        
+        if sessions_dir.exists():
+            files = list(sessions_dir.glob("*.session"))
+            self.logger.info(f"Fichiers .session trouvés: {len(files)}")
+            for f in files:
+                self.logger.info(f"  - {f.name} ({f.stat().st_size} bytes)")
+        
+        # Vérifier l'index
+        sessions = self.session_manager.list_sessions()
+        self.logger.info(f"Sessions dans l'index: {len(sessions)}")
+        for session in sessions:
+            self.logger.info(f"  - {session['phone']} ({session['session_id']})")
+        
+        # Vérifier les comptes chargés
+        self.logger.info(f"Comptes chargés: {len(self.accounts)}")
+        for session_id, account in self.accounts.items():
+            self.logger.info(f"  - {account.phone} (connecté: {account.is_connected})")
+        
+        self.logger.info("=== FIN DEBUG ===")
 

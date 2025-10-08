@@ -10,10 +10,11 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QIcon, QFont
 
-from ui.styles import STYLE_SHEET, FONT_FAMILY
+from ui.modern_styles import get_modern_style, get_colors
 from ui.account_manager import AccountManagerWidget
-from ui.message_editor import MessageEditorWidget
-from ui.dashboard import DashboardWidget
+from ui.message_wizard import MessageWizard
+from ui.scheduled_messages import ScheduledMessagesWidget
+from ui.active_tasks import ActiveTasksWidget
 from ui.license_dialog import LicenseDialog
 
 from core.telegram_manager import TelegramManager
@@ -89,10 +90,11 @@ class MainWindow(QMainWindow):
     def init_ui(self):
         """Initialise l'interface utilisateur"""
         self.setWindowTitle("AutoTele - Planificateur de Messages Telegram")
-        self.setMinimumSize(1200, 800)
+        self.setMinimumSize(800, 700)
+        self.resize(800, 700)
         
-        # Appliquer le style
-        self.setStyleSheet(STYLE_SHEET)
+        # Appliquer le style moderne
+        self.setStyleSheet(get_modern_style())
         
         # Widget central
         central_widget = QWidget()
@@ -100,8 +102,8 @@ class MainWindow(QMainWindow):
         
         # Layout principal
         layout = QVBoxLayout(central_widget)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(20)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
         
         # En-tête
         header = self._create_header()
@@ -110,42 +112,54 @@ class MainWindow(QMainWindow):
         # Onglets
         self.tabs = QTabWidget()
         
-        # Dashboard
-        self.dashboard_widget = DashboardWidget(self.scheduler, self.telegram_manager)
-        self.tabs.addTab(self.dashboard_widget, "📊 Tableau de bord")
-        
-        # Gestionnaire de comptes
+        # 1. Gestionnaire de comptes
         self.account_manager_widget = AccountManagerWidget(self.telegram_manager)
         self.tabs.addTab(self.account_manager_widget, "👤 Comptes Telegram")
         
-        # Éditeur de messages
-        self.message_editor_widget = MessageEditorWidget(
+        # 2. Tableau de bord (Gestion des messages programmés)
+        self.scheduled_messages_widget = ScheduledMessagesWidget(self.telegram_manager)
+        self.tabs.addTab(self.scheduled_messages_widget, "📊 Tableau de bord")
+        
+        # 3. Envois en cours
+        self.active_tasks_widget = ActiveTasksWidget(self.telegram_manager, self.scheduler)
+        self.tabs.addTab(self.active_tasks_widget, "📤 Envois en cours")
+        
+        # 4. Wizard de messages (étape par étape)
+        self.message_wizard_widget = MessageWizard(
             self.telegram_manager, self.scheduler
         )
-        self.tabs.addTab(self.message_editor_widget, "✉️ Nouveau Message")
+        self.tabs.addTab(self.message_wizard_widget, "✉️ Nouveau Message")
+        
+        # Connexion pour rafraîchir quand on change d'onglet
+        self.tabs.currentChanged.connect(self._on_tab_changed)
         
         layout.addWidget(self.tabs)
+        
+        # Rafraîchir le premier onglet au démarrage avec un délai plus long
+        QTimer.singleShot(2000, lambda: self._on_tab_changed(0))
         
         # Barre de statut
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self._update_status_bar()
         
-        # Timer pour rafraîchir l'interface
+        # Timer pour rafraîchir l'interface (seulement la barre de statut)
         self.refresh_timer = QTimer()
-        self.refresh_timer.timeout.connect(self._refresh_ui)
-        self.refresh_timer.start(5000)  # Toutes les 5 secondes
+        self.refresh_timer.timeout.connect(self._update_status_bar)
+        self.refresh_timer.start(10000)  # Toutes les 10 secondes (suffisant pour les stats)
     
     def _create_header(self) -> QWidget:
         """Crée l'en-tête de l'application"""
         header = QWidget()
+        header.setObjectName("header")
+        header.setStyleSheet("#header { background-color: #4A90E2; border-radius: 6px; padding: 8px; }")
         layout = QHBoxLayout(header)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(10, 5, 10, 5)
         
         # Titre
-        title = QLabel("AutoTele")
-        title.setProperty("class", "title")
-        title.setFont(QFont(FONT_FAMILY, 24, QFont.Weight.Bold))
+        title = QLabel("📱 AutoTele")
+        title.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        title.setStyleSheet("color: white; background: transparent;")
         layout.addWidget(title)
         
         layout.addStretch()
@@ -153,17 +167,20 @@ class MainWindow(QMainWindow):
         # Statut de la licence
         license_status = self.license_manager.get_license_status()
         if license_status["is_trial"]:
-            status_text = f"⏱️ Période d'essai : {license_status['trial_days_left']} jours restants"
+            status_text = f"⏱️ Essai : {license_status['trial_days_left']}j restants"
         else:
             status_text = "✅ Licence active"
         
         self.license_label = QLabel(status_text)
-        self.license_label.setProperty("class", "subtitle")
+        self.license_label.setFont(QFont("Segoe UI", 9))
+        self.license_label.setStyleSheet("color: white; background: transparent;")
         layout.addWidget(self.license_label)
         
         # Bouton de licence
-        license_btn = QPushButton("Gérer la licence")
-        license_btn.setProperty("class", "secondary")
+        license_btn = QPushButton("⚙️")
+        license_btn.setMaximumWidth(35)
+        license_btn.setToolTip("Gérer la licence")
+        license_btn.setStyleSheet("background: white; color: #4A90E2; border: none; border-radius: 4px; padding: 5px;")
         license_btn.clicked.connect(self._show_license_dialog)
         layout.addWidget(license_btn)
         
@@ -191,23 +208,95 @@ class MainWindow(QMainWindow):
             
             # Rafraîchir l'interface
             self.account_manager_widget.refresh_accounts()
-            self.message_editor_widget.refresh_accounts()
+            self.message_wizard_widget.refresh_accounts()
         
         # Exécuter dans la boucle d'événements
-        asyncio.create_task(load())
+        # asyncio.create_task(load())  # Commenté temporairement
+        
+        # Charger les sessions de manière synchrone
+        try:
+            # Debug des sessions
+            self.telegram_manager.debug_sessions()
+            
+            # Charger les sessions (elles restent connectées)
+            self.telegram_manager.load_existing_sessions()
+            
+            # Vérifier les connexions en arrière-plan
+            def verify_connections_sync():
+                try:
+                    # Utiliser la boucle d'événements existante
+                    loop = asyncio.get_event_loop()
+                    
+                    async def verify_connections():
+                        await self.telegram_manager.verify_all_connections()
+                        # Rafraîchir l'interface après vérification
+                        self.account_manager_widget.refresh_accounts()
+                        self.message_wizard_widget.refresh_accounts()
+                        
+                        accounts = self.telegram_manager.list_accounts()
+                        connected_accounts = [a for a in accounts if a["is_connected"]]
+                        self.logger.info(f"✅ {len(connected_accounts)} compte(s) réellement connecté(s) sur {len(accounts)}")
+                    
+                    # Créer la tâche dans la boucle existante
+                    asyncio.create_task(verify_connections())
+                    
+                except Exception as e:
+                    self.logger.error(f"Erreur vérification connexions: {e}")
+            
+            # Lancer la vérification en arrière-plan avec un délai
+            QTimer.singleShot(1000, verify_connections_sync)
+            
+            # Rafraîchir l'interface immédiatement (avant vérification)
+            self.account_manager_widget.refresh_accounts()
+            self.message_wizard_widget.refresh_accounts()
+            
+            accounts = self.telegram_manager.list_accounts()
+            self.logger.info(f"📁 {len(accounts)} compte(s) chargé(s) (vérification en cours...)")
+            
+        except Exception as e:
+            self.logger.error(f"Erreur lors du chargement des sessions: {e}")
     
     def _start_scheduler(self):
         """Démarre le scheduler de messages"""
+        print("=" * 60)
+        print("DEBUG: _start_scheduler appelé")
+        print("=" * 60)
+        
         async def start():
+            print("DEBUG: Fonction async start() appelée")
+            self.logger.info("🚀 Démarrage du scheduler...")
             await self.scheduler.start_scheduler()
         
-        asyncio.create_task(start())
-        self.logger.info("Scheduler démarré")
+        # Utiliser QTimer pour éviter les conflits asyncio
+        import asyncio
+        from PyQt6.QtCore import QTimer
+        
+        def launch():
+            print("DEBUG: Fonction launch() appelée")
+            self.logger.info("⏰ Lancement du scheduler dans 1 seconde...")
+            task = asyncio.create_task(start())
+            print(f"DEBUG: Task créée: {task}")
+        
+        QTimer.singleShot(1000, launch)
+        self.logger.info("✅ Scheduler programmé pour démarrage")
+        print("DEBUG: QTimer configuré")
+    
+    def _on_tab_changed(self, index):
+        """Rafraîchit l'onglet quand on le sélectionne"""
+        if index == 0:  # Comptes Telegram
+            self.account_manager_widget.refresh_accounts()
+        elif index == 1:  # Tableau de bord
+            # Rafraîchir les comptes ET les messages programmés
+            self.scheduled_messages_widget.refresh_accounts()
+        elif index == 2:  # Envois en cours
+            self.active_tasks_widget.refresh_tasks()
+        elif index == 3:  # Nouveau Message
+            self.message_wizard_widget.refresh_accounts()
     
     def _refresh_ui(self):
-        """Rafraîchit l'interface utilisateur"""
-        self.dashboard_widget.refresh()
-        self._update_status_bar()
+        """Rafraîchit l'interface utilisateur (désactivé - on utilise _on_tab_changed)"""
+        # Cette méthode n'est plus utilisée - refresh seulement sur changement d'onglet
+        pass
     
     def _update_status_bar(self):
         """Met à jour la barre de statut"""
