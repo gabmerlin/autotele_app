@@ -396,7 +396,6 @@ class TelegramManager:
     async def load_existing_sessions(self):
         """Charge les sessions existantes"""
         sessions = self.session_manager.list_sessions()
-        self.logger.info(f"Chargement de {len(sessions)} sessions...")
         
         for session_info in sessions:
             try:
@@ -405,7 +404,6 @@ class TelegramManager:
                 # Vérifier si le fichier de session existe
                 session_file = self.session_manager.get_session_file_path(session_id)
                 if not session_file.exists():
-                    self.logger.warning(f"Fichier de session manquant: {session_id}")
                     self.session_manager.delete_session(session_id)
                     continue
                 
@@ -425,9 +423,7 @@ class TelegramManager:
                 connected = await account.connect()
                 if connected:
                     self.accounts[session_id] = account
-                    self.logger.info(f"✅ Session chargée: {session_info['phone']}")
                 else:
-                    self.logger.warning(f"❌ Session non autorisée: {session_info['phone']}")
                     # Marquer comme non autorisée mais la garder dans les comptes
                     account.is_connected = False
                     self.accounts[session_id] = account
@@ -435,8 +431,6 @@ class TelegramManager:
                     
             except Exception as e:
                 self.logger.error(f"Erreur chargement session {session_info.get('phone', 'unknown')}: {e}")
-        
-        self.logger.info(f"Sessions chargées: {len(self.accounts)} comptes actifs")
     
     def get_account(self, session_id: str) -> Optional[TelegramAccount]:
         """Récupère un compte par son ID"""

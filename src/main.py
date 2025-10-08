@@ -31,22 +31,17 @@ class AutoTeleApp:
     async def load_existing_sessions(self):
         """Charge les sessions existantes au démarrage"""
         try:
-            logger.info("🔄 Début du chargement des sessions existantes...")
             # Charger les sessions avec la méthode async qui fait tout
             await self.telegram_manager.load_existing_sessions()
             
             # Compter les comptes chargés
             nb_accounts = len(self.telegram_manager.list_accounts())
-            logger.info(f"✅ Sessions chargées : {nb_accounts} comptes actifs")
             
             # Rafraîchir la page des comptes pour afficher les sessions
             if nb_accounts > 0:
-                logger.info("Rafraîchissement de la page des comptes...")
                 self.show_page('comptes')
-            else:
-                logger.info("Aucun compte à afficher")
         except Exception as e:
-            logger.error(f"❌ Erreur chargement sessions: {e}", exc_info=True)
+            logger.error(f"Erreur chargement sessions: {e}")
     
     def create_sidebar(self):
         """Crée le menu latéral gauche"""
@@ -214,9 +209,7 @@ class AutoTeleApp:
                                         ui.button('Annuler', on_click=verification_dialog.close).props('flat')
                                         ui.button('Vérifier', on_click=verify).props('color=primary')
                             
-                            logger.info("Ouverture du dialog de vérification...")
                             verification_dialog.open()
-                            logger.info("Dialog de vérification ouvert !")
                         else:
                             ui.notify(f'Erreur: {message}', type='negative')
                     
@@ -232,15 +225,12 @@ class AutoTeleApp:
     
     def open_verification_popup(self):
         """Ouvre le popup de vérification"""
-        logger.info("Ouverture du popup de vérification...")
         if self.verification_dialog_instance:
-            logger.info("Fermeture de l'ancien dialog...")
             self.verification_dialog_instance.close()
         self.create_verification_dialog()
     
     def create_verification_dialog(self):
         """Crée et ouvre le dialogue de vérification"""
-        logger.info("Création du dialog de vérification...")
         dialog = ui.dialog().props('persistent')
         self.verification_dialog_instance = dialog
         
@@ -291,16 +281,12 @@ class AutoTeleApp:
                     ui.button('Annuler', on_click=dialog.close).props('flat')
                     ui.button('Vérifier', on_click=verify).props('color=primary')
         
-        logger.info("Ouverture du dialog...")
         dialog.open()
-        logger.info("Dialog ouvert !")
     
     async def reconnect_account(self, account):
         """Reconnecte un compte non autorisé"""
         session_id = account.get('session_id')
         phone = account.get('phone')
-        
-        logger.info(f"Reconnexion du compte {phone}")
         
         try:
             # Renvoyer le code
@@ -315,7 +301,6 @@ class AutoTeleApp:
                 ui.notify('Code envoyé ! Vérifiez votre Telegram', type='positive')
                 
                 # Créer le dialog de vérification
-                logger.info("Création du dialog de vérification pour reconnexion...")
                 verification_dialog = ui.dialog().props('persistent')
                 
                 with verification_dialog, ui.card().classes('w-96 p-6'):
@@ -347,7 +332,6 @@ class AutoTeleApp:
                                 success, error = await self.telegram_manager.verify_account(session_id, code, password)
                                 
                                 if success:
-                                    logger.info(f"Reconnexion réussie pour {phone}")
                                     verification_dialog.close()
                                     ui.notify('✅ Compte reconnecté avec succès !', type='positive')
                                     self.temp_phone = None
@@ -365,9 +349,7 @@ class AutoTeleApp:
                             ui.button('Annuler', on_click=verification_dialog.close).props('flat')
                             ui.button('Vérifier', on_click=verify).props('color=primary')
                 
-                logger.info("Ouverture du dialog de reconnexion...")
                 verification_dialog.open()
-                logger.info("Dialog de reconnexion ouvert !")
             else:
                 ui.notify(f'Erreur: {message}', type='negative')
                 
@@ -387,13 +369,12 @@ class AutoTeleApp:
             
             async def confirm():
                 try:
-                    logger.info(f"Suppression du compte {phone}")
                     await self.telegram_manager.remove_account(session_id)
                     dialog.close()
                     ui.notify('✅ Compte supprimé', type='positive')
                     # Rafraîchir après un court délai
                     ui.timer(0.2, lambda: self.show_page('comptes'), once=True)
-    except Exception as e:
+                except Exception as e:
                     ui.notify(f'Erreur: {e}', type='negative')
             
             with ui.row().classes('w-full justify-end gap-2 mt-4'):
@@ -468,5 +449,4 @@ def main():
 
 
 if __name__ == '__main__':
-    logger.info("Démarrage d'AutoTele...")
     main()
