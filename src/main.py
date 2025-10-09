@@ -53,22 +53,26 @@ class AutoTeleApp:
     
     def create_sidebar(self):
         """Crée le menu latéral gauche"""
-        with ui.column().classes('w-64 h-screen bg-gray-100 p-4 gap-2'):
+        with ui.column().classes('w-64 h-screen app-sidebar p-6 gap-3'):
             # Logo/Titre
-            ui.label('🚀 AutoTele').classes('text-2xl font-bold mb-4')
-            ui.separator()
+            with ui.row().classes('items-center gap-3 mb-6'):
+                ui.label('▸').classes('text-3xl').style('color: #60a5fa;')
+                ui.label('AutoTele').classes('text-2xl sidebar-title')
             
-            # Menu items
-            ui.button('📱 Compte Telegram', on_click=lambda: self.show_page('comptes')).props('flat align=left').classes('w-full')
-            ui.button('✉️ Nouveau Messages', on_click=lambda: self.show_page('nouveau')).props('flat align=left').classes('w-full')
-            ui.button('📤 Envoi en cours', on_click=lambda: self.show_page('envoi')).props('flat align=left').classes('w-full')
-            ui.button('📅 Messages Programmé', on_click=lambda: self.show_page('programme')).props('flat align=left').classes('w-full')
+            ui.separator().style('background: rgba(255, 255, 255, 0.1); height: 1px; border: none;')
+            
+            # Menu items avec icônes professionnelles
+            with ui.column().classes('gap-2 mt-4'):
+                ui.button('⚙  Comptes', on_click=lambda: self.show_page('comptes')).props('flat align=left').classes('w-full sidebar-btn text-white')
+                ui.button('✎  Nouveau Message', on_click=lambda: self.show_page('nouveau')).props('flat align=left').classes('w-full sidebar-btn text-white')
+                ui.button('⏱  Messages Programmés', on_click=lambda: self.show_page('programme')).props('flat align=left').classes('w-full sidebar-btn text-white')
             
             ui.space()
             
             # Footer
-            with ui.row().classes('items-center gap-2'):
-                ui.label('Version 2.0').classes('text-xs text-gray-500')
+            with ui.column().classes('gap-1'):
+                ui.label('Version 2.0').classes('text-xs').style('color: rgba(255, 255, 255, 0.5);')
+                ui.label('Pro Edition').classes('text-xs font-semibold').style('color: #60a5fa;')
     
     def show_page(self, page_name: str):
         """Affiche une page spécifique"""
@@ -83,8 +87,6 @@ class AutoTeleApp:
                 elif page_name == 'nouveau':
                     # Utiliser la page refactorisée
                     self.new_message_page.render()
-                elif page_name == 'envoi':
-                    self.page_envoi()
                 elif page_name == 'programme':
                     # Utiliser la page refactorisée
                     self.scheduled_messages_page.render()
@@ -94,35 +96,47 @@ class AutoTeleApp:
     
     def page_comptes(self):
         """Page de gestion des comptes Telegram"""
-        with ui.column().classes('w-full gap-4 p-6'):
-            ui.label('📱 Compte Telegram').classes('text-3xl font-bold')
-            ui.separator()
+        with ui.column().classes('w-full gap-6 p-8'):
+            # En-tête avec style professionnel
+            with ui.row().classes('items-center gap-3 mb-2'):
+                ui.label('⚙').classes('text-4xl').style('color: var(--primary);')
+                ui.label('Comptes Telegram').classes('text-3xl font-bold').style('color: var(--text-primary);')
+            ui.label('Gérez vos comptes Telegram connectés').classes('text-sm').style('color: var(--text-secondary);')
+            
+            ui.separator().style('background: var(--border); height: 1px; border: none; margin: 16px 0;')
             
             # Liste des comptes
             accounts = self.telegram_manager.list_accounts()
             
             if accounts:
-                for account in accounts:
-                    with ui.card().classes('w-full p-4'):
-                        with ui.row().classes('w-full items-center gap-4'):
-                            status_icon = '🟢' if account.get('is_connected', False) else '🔴'
-                            ui.label(f"{status_icon} {account.get('account_name', 'Sans nom')}").classes('text-lg font-bold')
-                            ui.label(f"({account.get('phone', 'N/A')})").classes('text-gray-600')
-                            ui.space()
-                            
-                            # Boutons d'action
-                            with ui.row().classes('gap-2'):
-                                if not account.get('is_connected', False):
-                                    ui.button('🔄 Se reconnecter', on_click=lambda a=account: self.reconnect_account(a)).props('flat color=orange')
-                                ui.button('⚙️ Paramètres', on_click=lambda a=account: self.account_settings_dialog(a)).props('flat color=blue')
-                                ui.button('🗑️ Supprimer', on_click=lambda a=account: self.delete_account(a)).props('flat color=red')
+                with ui.column().classes('gap-3'):
+                    for account in accounts:
+                        is_connected = account.get('is_connected', False)
+                        with ui.card().classes('w-full p-5 card-modern'):
+                            with ui.row().classes('w-full items-center gap-4'):
+                                # Status badge moderne
+                                status_class = 'status-online' if is_connected else 'status-offline'
+                                ui.html(f'<span class="status-badge {status_class}"></span>', sanitize=False)
+                                
+                                # Infos compte
+                                with ui.column().classes('gap-1 flex-1'):
+                                    ui.label(account.get('account_name', 'Sans nom')).classes('text-lg font-semibold').style('color: var(--text-primary);')
+                                    ui.label(account.get('phone', 'N/A')).classes('text-sm').style('color: var(--text-secondary);')
+                                
+                                # Boutons d'action
+                                with ui.row().classes('gap-2'):
+                                    if not is_connected:
+                                        ui.button('↻ Reconnecter', on_click=lambda a=account: self.reconnect_account(a)).props('flat dense').style('color: var(--warning);')
+                                    ui.button('⚙ Paramètres', on_click=lambda a=account: self.account_settings_dialog(a)).props('flat dense').style('color: var(--accent);')
+                                    ui.button('✕ Supprimer', on_click=lambda a=account: self.delete_account(a)).props('flat dense').style('color: var(--danger);')
             else:
-                with ui.card().classes('w-full p-6'):
-                    ui.label('Aucun compte configuré').classes('text-gray-600')
-                    ui.label('Cliquez sur "Ajouter un compte" pour commencer').classes('text-sm text-gray-500 mt-2')
+                with ui.card().classes('w-full p-8 card-modern text-center'):
+                    ui.label('●').classes('text-5xl mb-3').style('color: var(--secondary); opacity: 0.3;')
+                    ui.label('Aucun compte configuré').classes('text-lg font-semibold mb-2').style('color: var(--text-secondary);')
+                    ui.label('Ajoutez votre premier compte Telegram pour commencer').classes('text-sm').style('color: var(--text-secondary); opacity: 0.7;')
             
-            # Bouton ajouter
-            ui.button('➕ Ajouter un compte', on_click=self.add_account_dialog).props('color=primary size=lg').classes('w-full')
+            # Bouton ajouter moderne
+            ui.button('＋ Ajouter un compte', on_click=self.add_account_dialog).props('size=lg').classes('w-full btn-primary mt-4').style('padding: 16px; font-size: 16px;')
             
             # Bouton de secours pour le popup de vérification
             if self.temp_phone and self.temp_session_id:
@@ -130,8 +144,8 @@ class AutoTeleApp:
     
     async def add_account_dialog(self):
         """Dialogue pour ajouter un compte"""
-        with ui.dialog() as dialog, ui.card().classes('w-96 p-6'):
-            ui.label('➕ Ajouter un compte Telegram').classes('text-2xl font-bold mb-4')
+        with ui.dialog() as dialog, ui.card().classes('w-96 p-6 card-modern'):
+            ui.label('＋ Ajouter un compte').classes('text-2xl font-bold mb-4').style('color: var(--text-primary);')
             
             with ui.column().classes('w-full gap-4'):
                 ui.label('Numéro de téléphone').classes('font-medium')
@@ -173,8 +187,8 @@ class AutoTeleApp:
                             # Créer le dialog de vérification dans le même contexte
                             verification_dialog = ui.dialog().props('persistent')
                             
-                            with verification_dialog, ui.card().classes('w-96 p-6'):
-                                ui.label('🔐 Vérification').classes('text-2xl font-bold mb-4')
+                            with verification_dialog, ui.card().classes('w-96 p-6 card-modern'):
+                                ui.label('✓ Vérification').classes('text-2xl font-bold mb-4').style('color: var(--text-primary);')
                                 
                                 with ui.column().classes('w-full gap-4'):
                                     ui.label(f'Compte: {phone}').classes('text-gray-600')
@@ -185,8 +199,8 @@ class AutoTeleApp:
                                     ui.label('Mot de passe 2FA (si activé)').classes('font-medium')
                                     password_input = ui.input(placeholder='Laissez vide si pas de 2FA', password=True, password_toggle_button=True).classes('w-full')
                                     
-                                    with ui.card().classes('bg-yellow-50 p-3'):
-                                        ui.label('⚠️ Le mot de passe 2FA n\'est requis que si vous l\'avez activé sur Telegram').classes('text-sm text-yellow-800')
+                                    with ui.card().classes('p-3').style('background: #fef3c7; border-left: 3px solid var(--warning);'):
+                                        ui.label('⚠ Le mot de passe 2FA n\'est requis que si vous l\'avez activé sur Telegram').classes('text-sm').style('color: #92400e;')
                                     
                                     async def verify():
                                         code = code_input.value.strip()
@@ -217,8 +231,8 @@ class AutoTeleApp:
                                             ui.notify(f'Erreur: {e}', type='negative')
                                     
                                     with ui.row().classes('w-full justify-end gap-2 mt-4'):
-                                        ui.button('Annuler', on_click=verification_dialog.close).props('flat')
-                                        ui.button('Vérifier', on_click=verify).props('color=primary')
+                                        ui.button('Annuler', on_click=verification_dialog.close).props('flat').style('color: var(--secondary);')
+                                        ui.button('✓ Vérifier', on_click=verify).classes('btn-primary')
                             
                             verification_dialog.open()
                         else:
@@ -229,8 +243,8 @@ class AutoTeleApp:
                         ui.notify(f'Erreur: {e}', type='negative')
                 
                 with ui.row().classes('w-full justify-end gap-2 mt-4'):
-                    ui.button('Annuler', on_click=dialog.close).props('flat')
-                    ui.button('Continuer', on_click=submit).props('color=primary')
+                    ui.button('Annuler', on_click=dialog.close).props('flat').style('color: var(--secondary);')
+                    ui.button('→ Continuer', on_click=submit).classes('btn-primary')
         
         dialog.open()
     
@@ -245,8 +259,8 @@ class AutoTeleApp:
         dialog = ui.dialog().props('persistent')
         self.verification_dialog_instance = dialog
         
-        with dialog, ui.card().classes('w-96 p-6'):
-            ui.label('🔐 Vérification').classes('text-2xl font-bold mb-4')
+        with dialog, ui.card().classes('w-96 p-6 card-modern'):
+            ui.label('✓ Vérification').classes('text-2xl font-bold mb-4').style('color: var(--text-primary);')
             
             with ui.column().classes('w-full gap-4'):
                 ui.label(f'Compte: {self.temp_phone}').classes('text-gray-600')
@@ -257,8 +271,8 @@ class AutoTeleApp:
                 ui.label('Mot de passe 2FA (si activé)').classes('font-medium')
                 password_input = ui.input(placeholder='Laissez vide si pas de 2FA', password=True, password_toggle_button=True).classes('w-full')
                 
-                with ui.card().classes('bg-yellow-50 p-3'):
-                    ui.label('⚠️ Le mot de passe 2FA n\'est requis que si vous l\'avez activé sur Telegram').classes('text-sm text-yellow-800')
+                with ui.card().classes('p-3').style('background: #fef3c7; border-left: 3px solid var(--warning);'):
+                    ui.label('⚠ Le mot de passe 2FA n\'est requis que si vous l\'avez activé sur Telegram').classes('text-sm').style('color: #92400e;')
                 
                 async def verify():
                     code = code_input.value.strip()
@@ -289,8 +303,8 @@ class AutoTeleApp:
                         ui.notify(f'Erreur: {e}', type='negative')
                 
                 with ui.row().classes('w-full justify-end gap-2 mt-4'):
-                    ui.button('Annuler', on_click=dialog.close).props('flat')
-                    ui.button('Vérifier', on_click=verify).props('color=primary')
+                    ui.button('Annuler', on_click=dialog.close).props('flat').style('color: var(--secondary);')
+                    ui.button('✓ Vérifier', on_click=verify).classes('btn-primary')
         
         dialog.open()
     
@@ -314,8 +328,8 @@ class AutoTeleApp:
                 # Créer le dialog de vérification
                 verification_dialog = ui.dialog().props('persistent')
                 
-                with verification_dialog, ui.card().classes('w-96 p-6'):
-                    ui.label('🔄 Reconnexion').classes('text-2xl font-bold mb-4')
+                with verification_dialog, ui.card().classes('w-96 p-6 card-modern'):
+                    ui.label('↻ Reconnexion').classes('text-2xl font-bold mb-4').style('color: var(--text-primary);')
                     
                     with ui.column().classes('w-full gap-4'):
                         ui.label(f'Compte: {phone}').classes('text-gray-600')
@@ -326,8 +340,8 @@ class AutoTeleApp:
                         ui.label('Mot de passe 2FA (si activé)').classes('font-medium')
                         password_input = ui.input(placeholder='Laissez vide si pas de 2FA', password=True, password_toggle_button=True).classes('w-full')
                         
-                        with ui.card().classes('bg-orange-50 p-3'):
-                            ui.label('⚠️ Le mot de passe 2FA n\'est requis que si vous l\'avez activé sur Telegram').classes('text-sm text-orange-800')
+                        with ui.card().classes('p-3').style('background: #fef3c7; border-left: 3px solid var(--warning);'):
+                            ui.label('⚠ Le mot de passe 2FA n\'est requis que si vous l\'avez activé sur Telegram').classes('text-sm').style('color: #92400e;')
                         
                         async def verify():
                             code = code_input.value.strip()
@@ -357,8 +371,8 @@ class AutoTeleApp:
                                 ui.notify(f'Erreur: {e}', type='negative')
                         
                         with ui.row().classes('w-full justify-end gap-2 mt-4'):
-                            ui.button('Annuler', on_click=verification_dialog.close).props('flat')
-                            ui.button('Vérifier', on_click=verify).props('color=primary')
+                            ui.button('Annuler', on_click=verification_dialog.close).props('flat').style('color: var(--secondary);')
+                            ui.button('✓ Vérifier', on_click=verify).classes('btn-primary')
                 
                 verification_dialog.open()
             else:
@@ -373,8 +387,8 @@ class AutoTeleApp:
         session_id = account.get('session_id')
         phone = account.get('phone')
         
-        with ui.dialog() as dialog, ui.card().classes('w-96 p-6'):
-            ui.label('⚠️ Supprimer le compte ?').classes('text-xl font-bold text-red-600 mb-4')
+        with ui.dialog() as dialog, ui.card().classes('w-96 p-6 card-modern'):
+            ui.label('⚠ Supprimer le compte ?').classes('text-xl font-bold mb-4').style('color: var(--danger);')
             ui.label(f'Compte: {account.get("account_name")} ({phone})').classes('text-gray-700')
             ui.label('Cette action est irréversible.').classes('text-sm text-gray-500 mt-2')
             
@@ -389,8 +403,8 @@ class AutoTeleApp:
                     ui.notify(f'Erreur: {e}', type='negative')
             
             with ui.row().classes('w-full justify-end gap-2 mt-4'):
-                ui.button('Annuler', on_click=dialog.close).props('flat')
-                ui.button('Supprimer', on_click=confirm).props('color=red')
+                ui.button('Annuler', on_click=dialog.close).props('flat').style('color: var(--secondary);')
+                ui.button('✕ Supprimer', on_click=confirm).props('color=red')
         
         dialog.open()
     
@@ -403,8 +417,8 @@ class AutoTeleApp:
         # Charger les paramètres actuels
         settings = session_manager.get_account_settings(session_id)
         
-        with ui.dialog() as dialog, ui.card().classes('w-[600px] p-6'):
-            ui.label('⚙️ Paramètres du compte').classes('text-2xl font-bold mb-4')
+        with ui.dialog() as dialog, ui.card().classes('w-[600px] p-6 card-modern'):
+            ui.label('⚙ Paramètres du compte').classes('text-2xl font-bold mb-4').style('color: var(--text-primary);')
             ui.label(f"{account.get('account_name')} ({account.get('phone')})").classes('text-gray-600 mb-4')
             
             with ui.column().classes('w-full gap-4'):
@@ -518,20 +532,10 @@ class AutoTeleApp:
                         ui.notify(f'Erreur: {e}', type='negative')
                 
                 with ui.row().classes('w-full justify-end gap-2 mt-4'):
-                    ui.button('Annuler', on_click=dialog.close).props('flat')
-                    ui.button('💾 Sauvegarder', on_click=save).props('color=primary')
+                    ui.button('Annuler', on_click=dialog.close).props('flat').style('color: var(--secondary);')
+                    ui.button('💾 Sauvegarder', on_click=save).classes('btn-primary')
         
         dialog.open()
-    
-    def page_envoi(self):
-        """Page envois en cours"""
-        with ui.column().classes('w-full gap-4 p-6'):
-            ui.label('📤 Envoi en cours').classes('text-3xl font-bold')
-            ui.separator()
-            
-            with ui.card().classes('w-full p-6'):
-                ui.label('Messages en cours d\'envoi').classes('text-lg')
-                ui.label('Aucun envoi en cours pour le moment.').classes('text-gray-600')
     
 
 
@@ -543,7 +547,78 @@ def main():
     @ui.page('/')
     def index():
         """Page d'accueil avec menu latéral"""
-        with ui.row().classes('w-full h-screen').style('margin: 0; padding: 0;'):
+        # Ajouter les styles personnalisés globaux
+        ui.add_head_html('''
+            <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+            <style>
+                * {
+                    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif !important;
+                }
+                :root {
+                    --primary: #1e3a8a;
+                    --primary-light: #3b82f6;
+                    --secondary: #64748b;
+                    --accent: #0ea5e9;
+                    --success: #10b981;
+                    --warning: #f59e0b;
+                    --danger: #ef4444;
+                    --bg-primary: #ffffff;
+                    --bg-secondary: #f8fafc;
+                    --text-primary: #0f172a;
+                    --text-secondary: #64748b;
+                    --border: #e2e8f0;
+                }
+                .app-sidebar {
+                    background: linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%);
+                    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.08);
+                }
+                .sidebar-title {
+                    color: #ffffff;
+                    font-weight: 700;
+                    letter-spacing: -0.5px;
+                }
+                .sidebar-btn {
+                    transition: all 0.2s ease;
+                    border-radius: 8px;
+                    font-weight: 500;
+                }
+                .sidebar-btn:hover {
+                    background: rgba(255, 255, 255, 0.1);
+                    transform: translateX(4px);
+                }
+                .card-modern {
+                    border-radius: 12px;
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+                    border: 1px solid var(--border);
+                    transition: all 0.2s ease;
+                }
+                .card-modern:hover {
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+                }
+                .btn-primary {
+                    background: var(--primary);
+                    color: white;
+                    font-weight: 600;
+                    border-radius: 8px;
+                    transition: all 0.2s ease;
+                }
+                .btn-primary:hover {
+                    background: var(--primary-light);
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(30, 58, 138, 0.2);
+                }
+                .status-badge {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    display: inline-block;
+                }
+                .status-online { background: var(--success); }
+                .status-offline { background: var(--danger); }
+            </style>
+        ''')
+        
+        with ui.row().classes('w-full h-screen').style('margin: 0; padding: 0; background: var(--bg-secondary);'):
             # Menu latéral
             app.create_sidebar()
             

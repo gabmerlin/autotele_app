@@ -19,24 +19,27 @@ class ScheduledMessagesPage:
     
     def render(self):
         """Rendu de la page"""
-        with ui.column().classes('w-full gap-4 p-6'):
-            ui.label('📅 Messages Programmé').classes('text-3xl font-bold')
-            ui.separator()
+        with ui.column().classes('w-full gap-6 p-8'):
+            # En-tête moderne
+            with ui.row().classes('items-center gap-3 mb-2'):
+                ui.label('⏱').classes('text-4xl').style('color: var(--primary);')
+                ui.label('Messages Programmés').classes('text-3xl font-bold').style('color: var(--text-primary);')
+            ui.label('Gérez tous vos messages programmés').classes('text-sm').style('color: var(--text-secondary);')
+            ui.separator().style('background: var(--border); height: 1px; border: none; margin: 16px 0;')
             
             # Sélection du compte
-            with ui.card().classes('w-full p-4 mb-4'):
-                ui.label('Sélectionnez un compte pour voir les messages programmés').classes('font-bold mb-2')
+            with ui.card().classes('w-full p-5 mb-4 card-modern'):
+                ui.label('Sélectionnez un compte').classes('text-lg font-bold mb-3').style('color: var(--text-primary);')
                 
                 accounts = self.telegram_manager.list_accounts()
                 connected_accounts = [acc for acc in accounts if acc.get('is_connected', False)]
                 
                 if not connected_accounts:
-                    ui.label('Aucun compte connecté').classes('text-red-600')
+                    ui.label('✕ Aucun compte connecté').classes('font-semibold').style('color: var(--danger);')
                 else:
-                    with ui.row().classes('gap-2 flex-wrap'):
+                    with ui.row().classes('gap-3 flex-wrap'):
                         for account in connected_accounts:
                             is_selected = self.selected_account == account['session_id']
-                            button_class = 'bg-blue-500 text-white' if is_selected else 'bg-gray-300 text-gray-700'
                             
                             def make_select_handler(sid, name):
                                 async def select_account():
@@ -45,8 +48,12 @@ class ScheduledMessagesPage:
                                     await self.load_scheduled_messages()
                                 return select_account
                             
-                            ui.button(f"{account['account_name']}", 
-                                    on_click=make_select_handler(account['session_id'], account['account_name'])).classes(button_class)
+                            if is_selected:
+                                ui.button(f"● {account['account_name']}", 
+                                        on_click=make_select_handler(account['session_id'], account['account_name'])).classes('btn-primary')
+                            else:
+                                ui.button(f"○ {account['account_name']}", 
+                                        on_click=make_select_handler(account['session_id'], account['account_name'])).props('outline').style('color: var(--text-secondary);')
             
             # Container pour les messages
             self.messages_container = ui.column().classes('w-full')
@@ -60,10 +67,12 @@ class ScheduledMessagesPage:
         
         with self.messages_container:
             # Dialog de chargement avec info
-            with ui.card().classes('w-full p-4 bg-blue-50'):
-                ui.label('⏳ Chargement des messages programmés...').classes('text-blue-700 font-bold mb-2')
-                ui.label('Scan des 50 premiers groupes (peut prendre quelques secondes)').classes('text-blue-600 text-sm')
-                ui.spinner(size='lg', color='blue')
+            with ui.card().classes('w-full p-8 card-modern text-center'):
+                with ui.column().classes('w-full items-center gap-4'):
+                    ui.spinner(size='lg').style('color: var(--primary);')
+                    ui.label('Analyse en cours...').classes('text-xl font-bold mt-2').style('color: var(--text-primary);')
+                    ui.label('Scan exhaustif de vos groupes et messages programmés').classes('text-sm').style('color: var(--text-secondary);')
+                    ui.label('Veuillez patienter quelques instants').classes('text-xs').style('color: var(--text-secondary); opacity: 0.7;')
         
         # Récupérer le compte
         account = self.telegram_manager.get_account(self.selected_account)
@@ -100,18 +109,18 @@ class ScheduledMessagesPage:
         with self.messages_container:
             if self.current_messages:
                 # Boutons d'action globaux
-                with ui.row().classes('w-full gap-2 mb-3'):
+                with ui.row().classes('w-full gap-3 mb-4'):
                     # Bouton rafraîchir
                     async def refresh():
-                        ui.notify('🔄 Rechargement...', type='info')
+                        ui.notify('↻ Rechargement...', type='info')
                         await self.load_scheduled_messages()
                     
-                    ui.button('🔄 Rafraîchir', on_click=refresh).props('color=blue')
+                    ui.button('↻ Rafraîchir', on_click=refresh).props('outline').style('color: var(--accent);')
                     
                     # Bouton supprimer TOUT de TOUS les groupes
                     def delete_all_everywhere():
-                        with ui.dialog() as dialog, ui.card().classes('p-4'):
-                            ui.label('⚠️ ATTENTION').classes('text-2xl font-bold text-red-600 mb-3')
+                        with ui.dialog() as dialog, ui.card().classes('p-6 card-modern'):
+                            ui.label('⚠ ATTENTION').classes('text-2xl font-bold mb-4').style('color: var(--danger);')
                             ui.label(f'Supprimer TOUS les {len(self.current_messages)} messages programmés de TOUS les groupes ?').classes('text-lg font-bold mb-2')
                             ui.label('Cette action est IRRÉVERSIBLE et supprimera tous les messages programmés du compte.').classes('text-sm text-gray-600 mb-4')
                             
@@ -145,12 +154,12 @@ class ScheduledMessagesPage:
                                     ui.notify(f'❌ Erreur: {e}', type='negative')
                             
                             with ui.row().classes('w-full justify-end gap-2'):
-                                ui.button('Annuler', on_click=dialog.close).props('flat')
-                                ui.button('🗑️ TOUT SUPPRIMER', on_click=confirm_delete_all).props('color=red')
+                                ui.button('Annuler', on_click=dialog.close).props('flat').style('color: var(--secondary);')
+                                ui.button('✕ TOUT SUPPRIMER', on_click=confirm_delete_all).props('color=red')
                         
                         dialog.open()
                     
-                    ui.button('🗑️ Tout supprimer (TOUS)', on_click=delete_all_everywhere).props('color=red')
+                    ui.button('✕ Tout supprimer (TOUS)', on_click=delete_all_everywhere).props('color=red')
                 
                 # Grouper par chat
                 chats_dict = {}
@@ -164,15 +173,15 @@ class ScheduledMessagesPage:
                     chats_dict[chat_id]['messages'].append(msg)
                 
                 # Afficher par groupe
-                with ui.card().classes('w-full p-4 mb-3 bg-green-50'):
-                    ui.label(f'✅ {len(self.current_messages)} message(s) programmé(s) trouvé(s) dans {len(chats_dict)} groupe(s)').classes('text-green-700 font-bold')
+                with ui.card().classes('w-full p-5 mb-4').style('background: #ecfdf5; border-left: 3px solid var(--success);'):
+                    ui.label(f'✓ {len(self.current_messages)} message(s) programmé(s) dans {len(chats_dict)} groupe(s)').classes('text-lg font-bold').style('color: #065f46;')
                 
                 for chat_id, chat_data in chats_dict.items():
-                    with ui.card().classes('w-full p-4 mb-3'):
+                    with ui.card().classes('w-full p-5 mb-4 card-modern'):
                         # En-tête du groupe
-                        with ui.row().classes('w-full items-center gap-2 mb-3'):
-                            ui.label(f'📢 {chat_data["title"]}').classes('text-lg font-bold flex-1')
-                            ui.label(f'{len(chat_data["messages"])} message(s)').classes('bg-blue-100 px-2 py-1 rounded text-sm')
+                        with ui.row().classes('w-full items-center gap-3 mb-4'):
+                            ui.label(f'● {chat_data["title"]}').classes('text-lg font-bold flex-1').style('color: var(--text-primary);')
+                            ui.label(f'{len(chat_data["messages"])} message(s)').classes('px-3 py-1 rounded text-sm font-semibold').style('background: rgba(30, 58, 138, 0.1); color: var(--primary);')
                             
                             # Bouton supprimer tous les messages de ce groupe
                             def make_delete_all_handler(cid, title):
@@ -204,24 +213,24 @@ class ScheduledMessagesPage:
                                     dialog.open()
                                 return delete_all
                             
-                            ui.button('🗑️ Tout supprimer', on_click=make_delete_all_handler(chat_id, chat_data['title'])).props('flat color=red size=sm')
+                            ui.button('✕ Tout supprimer', on_click=make_delete_all_handler(chat_id, chat_data['title'])).props('flat dense').style('color: var(--danger);')
                         
                         # Liste des messages
                         with ui.column().classes('w-full gap-2'):
                             for msg in sorted(chat_data['messages'], key=lambda x: x['date']):
-                                with ui.card().classes('w-full p-3 bg-gray-50'):
-                                    with ui.row().classes('w-full items-start gap-2'):
-                                        with ui.column().classes('flex-1'):
+                                with ui.card().classes('w-full p-4').style('background: var(--bg-secondary); border: 1px solid var(--border);'):
+                                    with ui.row().classes('w-full items-start gap-3'):
+                                        with ui.column().classes('flex-1 gap-2'):
                                             # Date et heure
-                                            ui.label(msg['date'].strftime('%d/%m/%Y %H:%M')).classes('font-bold text-blue-600')
+                                            ui.label(msg['date'].strftime('%d/%m/%Y %H:%M')).classes('font-bold').style('color: var(--primary);')
                                             
                                             # Texte du message
                                             text = msg['text'][:100] + ('...' if len(msg['text']) > 100 else '')
-                                            ui.label(text).classes('text-sm text-gray-700')
+                                            ui.label(text).classes('text-sm').style('color: var(--text-primary);')
                                             
                                             # Média si présent
                                             if msg['has_media']:
-                                                ui.label(f'📎 {msg["media_type"]}').classes('text-xs text-purple-600')
+                                                ui.label(f'📎 {msg["media_type"]}').classes('text-xs').style('color: var(--accent);')
                                         
                                         # Bouton supprimer ce message
                                         def make_delete_msg_handler(cid, mid):
@@ -241,8 +250,9 @@ class ScheduledMessagesPage:
                                                     ui.notify(f'❌ Erreur: {e}', type='negative')
                                             return delete_msg
                                         
-                                        ui.button('🗑️', on_click=make_delete_msg_handler(chat_id, msg['message_id'])).props('flat dense color=red')
+                                        ui.button('✕', on_click=make_delete_msg_handler(chat_id, msg['message_id'])).props('flat dense').style('color: var(--danger);')
             else:
-                with ui.card().classes('w-full p-6 bg-gray-50'):
-                    ui.label('📭 Aucun message programmé').classes('text-xl font-bold text-gray-600 mb-2')
-                    ui.label('Les messages que vous programmez apparaîtront ici.').classes('text-sm text-gray-500')
+                with ui.card().classes('w-full p-8 card-modern text-center'):
+                    ui.label('●').classes('text-5xl mb-3').style('color: var(--secondary); opacity: 0.3;')
+                    ui.label('Aucun message programmé').classes('text-xl font-bold mb-2').style('color: var(--text-secondary);')
+                    ui.label('Les messages que vous programmez apparaîtront ici.').classes('text-sm').style('color: var(--text-secondary); opacity: 0.7;')

@@ -31,9 +31,13 @@ class NewMessagePage:
     
     def render(self):
         """Rendu de la page"""
-        with ui.column().classes('w-full h-full gap-4 p-6').style('overflow: hidden;'):
-            ui.label('✉️ Nouveau Messages').classes('text-3xl font-bold')
-            ui.separator()
+        with ui.column().classes('w-full h-full gap-6 p-8').style('overflow: hidden;'):
+            # En-tête moderne
+            with ui.row().classes('items-center gap-3 mb-2'):
+                ui.label('✎').classes('text-4xl').style('color: var(--primary);')
+                ui.label('Nouveau Message').classes('text-3xl font-bold').style('color: var(--text-primary);')
+            ui.label('Créez et programmez vos messages Telegram').classes('text-sm').style('color: var(--text-secondary);')
+            ui.separator().style('background: var(--border); height: 1px; border: none; margin: 16px 0;')
             
             # Container pour les étapes
             self.steps_container = ui.column().classes('w-full flex-1').style('overflow: visible;')
@@ -45,18 +49,24 @@ class NewMessagePage:
         """Rendu de l'interface par étapes"""
         self.steps_container.clear()
         with self.steps_container:
-            # Indicateur d'étapes (compact)
-            with ui.card().classes('w-full p-2 mb-3'):
+            # Indicateur d'étapes moderne
+            with ui.card().classes('w-full p-4 mb-4 card-modern'):
                 with ui.row().classes('w-full items-center justify-around'):
                     for i in range(1, 5):
-                        step_class = 'bg-blue-500 text-white' if i == self.state['current_step'] else 'bg-gray-300 text-gray-600'
-                        if i < self.state['current_step']:
-                            step_class = 'bg-green-500 text-white'
+                        if i == self.state['current_step']:
+                            step_class = 'font-bold text-base'
+                            step_style = 'background: var(--primary); color: white; box-shadow: 0 4px 12px rgba(30, 58, 138, 0.3);'
+                        elif i < self.state['current_step']:
+                            step_class = 'font-semibold text-sm'
+                            step_style = 'background: var(--success); color: white;'
+                        else:
+                            step_class = 'text-sm'
+                            step_style = 'background: #e2e8f0; color: var(--text-secondary);'
                         
-                        with ui.column().classes('items-center gap-0'):
-                            ui.label(f'{i}').classes(f'w-7 h-7 rounded-full flex items-center justify-center {step_class} font-bold text-sm')
+                        with ui.column().classes('items-center gap-2'):
+                            ui.label(f'{i}').classes(f'w-10 h-10 rounded-full flex items-center justify-center {step_class}').style(step_style)
                             step_labels = ['Compte', 'Groupes', 'Message', 'Dates']
-                            ui.label(step_labels[i-1]).classes('text-xs')
+                            ui.label(step_labels[i-1]).classes('text-xs font-medium').style('color: var(--text-secondary);')
             
             # Contenu de l'étape actuelle
             if self.state['current_step'] == 1:
@@ -70,32 +80,36 @@ class NewMessagePage:
     
     def render_step_1(self):
         """Étape 1 : Sélection du compte"""
-        with ui.card().classes('w-full p-6'):
-            ui.label('1️⃣ Sélectionnez le compte').classes('text-2xl font-bold mb-4')
+        with ui.card().classes('w-full p-6 card-modern'):
+            ui.label('① Sélectionnez le compte').classes('text-2xl font-bold mb-4').style('color: var(--text-primary);')
             
             accounts = self.telegram_manager.list_accounts()
             connected_accounts = [acc for acc in accounts if acc.get('is_connected', False)]
             
             if not connected_accounts:
-                with ui.card().classes('bg-red-50 p-4'):
-                    ui.label('❌ Aucun compte connecté').classes('text-red-700 font-bold')
-                    ui.label('Veuillez connecter un compte depuis la page "Compte Telegram"').classes('text-red-600')
+                with ui.card().classes('p-4').style('background: #fee2e2; border-left: 3px solid var(--danger);'):
+                    ui.label('✕ Aucun compte connecté').classes('font-bold').style('color: #991b1b;')
+                    ui.label('Veuillez connecter un compte depuis la page "Comptes"').classes('text-sm').style('color: #991b1b;')
             else:
                 for account in connected_accounts:
                     session_id = account['session_id']
                     is_selected = self.state['selected_account'] == session_id
                     
-                    # Style selon sélection (compact)
+                    # Style selon sélection moderne
                     if is_selected:
-                        card_class = 'w-full p-2 cursor-pointer border-2 border-green-500 bg-green-50 mb-2'
-                        icon = '🎯'
-                        name_style = 'text-base font-bold text-green-700'
-                        phone_style = 'text-xs text-green-600'
+                        card_class = 'w-full p-4 cursor-pointer border-2 mb-3 card-modern'
+                        card_style = 'border-color: var(--primary); background: rgba(30, 58, 138, 0.05);'
+                        icon = '●'
+                        icon_style = 'color: var(--primary);'
+                        name_style = 'font-bold'
+                        name_color = 'var(--primary)'
                     else:
-                        card_class = 'w-full p-2 cursor-pointer border border-gray-200 hover:border-gray-300 bg-white mb-2'
-                        icon = '⚪'
-                        name_style = 'text-base font-bold'
-                        phone_style = 'text-xs text-gray-600'
+                        card_class = 'w-full p-4 cursor-pointer mb-3 card-modern'
+                        card_style = ''
+                        icon = '○'
+                        icon_style = 'color: var(--text-secondary);'
+                        name_style = 'font-semibold'
+                        name_color = 'var(--text-primary)'
                     
                     def make_select_handler(sid, name):
                         async def select_account():
@@ -104,18 +118,18 @@ class NewMessagePage:
                             self.render_steps()  # Re-render pour mettre à jour les styles
                         return select_account
                     
-                    with ui.card().classes(card_class).on('click', make_select_handler(session_id, account['account_name'])):
-                        with ui.row().classes('w-full items-center gap-2'):
-                            ui.label(icon).classes('text-lg')
+                    with ui.card().classes(card_class).style(card_style).on('click', make_select_handler(session_id, account['account_name'])):
+                        with ui.row().classes('w-full items-center gap-3'):
+                            ui.label(icon).classes('text-2xl').style(icon_style)
                             
-                            with ui.column().classes('flex-1'):
-                                ui.label(f"{account['account_name']}").classes(name_style)
-                                ui.label(f"{account['phone']}").classes(phone_style)
+                            with ui.column().classes('flex-1 gap-1'):
+                                ui.label(f"{account['account_name']}").classes(f'text-lg {name_style}').style(f'color: {name_color};')
+                                ui.label(f"{account['phone']}").classes('text-sm').style('color: var(--text-secondary);')
                             
-                            ui.label('🟢').classes('text-sm')
+                            ui.html('<span class="status-badge status-online"></span>', sanitize=False)
                 
                 # Bouton suivant
-                with ui.row().classes('w-full justify-end gap-2 mt-3'):
+                with ui.row().classes('w-full justify-end gap-2 mt-4'):
                     async def next_step():
                         if not self.state['selected_account']:
                             ui.notify('Veuillez sélectionner un compte', type='warning')
@@ -128,36 +142,76 @@ class NewMessagePage:
                             self.state['all_groups'] = await account.get_dialogs()
                             self.state['filtered_groups'] = self.state['all_groups'].copy()
                             self.state['selected_groups'] = []
+                            # Notification AVANT de changer le contexte UI
+                            ui.notify(f'{len(self.state["all_groups"])} groupe(s) chargé(s)', type='positive')
                             self.state['current_step'] = 2
                             self.render_steps()
-                            ui.notify(f'{len(self.state["all_groups"])} groupe(s) chargé(s)', type='positive')
                     
-                    ui.button('Suivant ➡️', on_click=next_step).props('color=primary size=md')
+                    ui.button('→ Suivant', on_click=next_step).classes('btn-primary').props('size=md')
     
     def render_step_2(self):
         """Étape 2 : Sélection des groupes"""
-        with ui.card().classes('w-full p-6 overflow-visible'):
-            ui.label('2️⃣ Sélectionnez les groupes').classes('text-2xl font-bold mb-4')
+        with ui.card().classes('w-full p-6 overflow-visible card-modern'):
+            ui.label('② Sélectionnez les groupes').classes('text-2xl font-bold mb-4').style('color: var(--text-primary);')
             
             # Barre de recherche et boutons
-            with ui.row().classes('w-full gap-2 mb-4'):
+            with ui.row().classes('w-full gap-3 mb-4'):
                 ui.input('Rechercher un groupe...', 
-                        on_change=self.filter_groups).classes('flex-1').props('outlined')
+                        on_change=self.filter_groups).classes('flex-1').props('outlined dense').style('border-radius: 8px;')
                 
-                ui.button('✅ Tout', on_click=self.select_all).props('flat dense color=green size=sm')
-                ui.button('⬜ Rien', on_click=self.deselect_all).props('flat dense color=red size=sm')
+                with ui.row().classes('gap-2'):
+                    ui.button('✓ Tout', on_click=self.select_all).props('outline dense size=sm').style('''
+                        color: var(--success); 
+                        border-color: var(--success); 
+                        font-weight: 600;
+                        transition: all 0.2s ease;
+                    ''').on('mouseover', lambda: None).on('mouseleave', lambda: None)
+                    
+                    ui.button('○ Rien', on_click=self.deselect_all).props('outline dense size=sm').style('''
+                        color: var(--secondary); 
+                        border-color: var(--secondary); 
+                        font-weight: 600;
+                        transition: all 0.2s ease;
+                    ''')
             
-            # Compteur de sélection (compact)
-            self.counter_label = ui.label().classes('text-sm font-bold mb-2')
+            # Compteur de sélection moderne
+            self.counter_label = ui.label().classes('text-sm font-semibold mb-3 px-3 py-2 rounded-lg').style('background: rgba(30, 58, 138, 0.1); color: var(--primary); border-left: 3px solid var(--primary);')
             self.update_counter()
             
-            # Liste des groupes (hauteur réduite pour voir le bouton suivant)
-            self.groups_container = ui.column().classes('w-full gap-1').style('max-height: 350px; overflow-y: auto; overflow-x: hidden;')
+            # Liste des groupes avec scroll moderne
+            self.groups_container = ui.column().classes('w-full gap-2').style('''
+                max-height: 350px; 
+                overflow-y: auto; 
+                overflow-x: hidden;
+                padding-right: 8px;
+            ''')
+            
+            # Ajouter du CSS pour le scroll moderne
+            ui.add_head_html('''
+                <style>
+                    .groups-container::-webkit-scrollbar {
+                        width: 6px;
+                    }
+                    .groups-container::-webkit-scrollbar-track {
+                        background: #f1f5f9;
+                        border-radius: 3px;
+                    }
+                    .groups-container::-webkit-scrollbar-thumb {
+                        background: var(--secondary);
+                        border-radius: 3px;
+                    }
+                    .groups-container::-webkit-scrollbar-thumb:hover {
+                        background: var(--primary);
+                    }
+                </style>
+            ''')
+            
+            self.groups_container.classes('groups-container')
             self.update_groups_list()
             
             # Boutons navigation
-            with ui.row().classes('w-full justify-between mt-3'):
-                ui.button('⬅️ Retour', on_click=self.go_back).props('flat size=md')
+            with ui.row().classes('w-full justify-between mt-4'):
+                ui.button('← Retour', on_click=self.go_back).props('flat size=md').style('color: var(--secondary);')
                 
                 async def next_step():
                     if not self.state['selected_groups']:
@@ -173,7 +227,7 @@ class NewMessagePage:
                     self.state['current_step'] = 3
                     self.render_steps()
                 
-                ui.button('Suivant ➡️', on_click=next_step).props('color=primary size=md')
+                ui.button('→ Suivant', on_click=next_step).classes('btn-primary').props('size=md')
     
     def filter_groups(self, e):
         """Filtre les groupes selon la recherche"""
@@ -229,28 +283,58 @@ class NewMessagePage:
             for group in self.state['filtered_groups']:
                 is_selected = group['id'] in self.state['selected_groups']
                 
-                card_class = 'w-full p-2 cursor-pointer border mb-1'
-                if is_selected:
-                    card_class += ' border-green-500 bg-green-50'
-                else:
-                    card_class += ' border-gray-200 hover:border-gray-300 bg-white'
-                
                 def make_toggle_handler(gid):
                     def handler():
                         self.toggle_group(gid)
                     return handler
                 
-                with ui.card().classes(card_class).on('click', make_toggle_handler(group['id'])):
-                    with ui.row().classes('w-full items-center gap-2'):
-                        ui.label('✅' if is_selected else '⬜').classes('text-base')
-                        ui.label(group['title']).classes('flex-1 text-sm')
+                # Style moderne selon sélection
+                if is_selected:
+                    card_style = 'background: rgba(16, 185, 129, 0.05); border: 2px solid var(--success);'
+                    icon = '●'
+                    icon_style = 'color: var(--success);'
+                    title_style = 'color: var(--success); font-weight: 600;'
+                else:
+                    card_style = 'background: white; border: 1px solid var(--border);'
+                    icon = '○'
+                    icon_style = 'color: var(--text-secondary);'
+                    title_style = 'color: var(--text-primary);'
+                
+                with ui.card().classes('w-full p-4 cursor-pointer card-modern').style(f'{card_style} transition: all 0.2s ease;').on('click', make_toggle_handler(group['id'])):
+                    with ui.row().classes('w-full items-center gap-3'):
+                        ui.label(icon).classes('text-xl').style(icon_style)
+                        
+                        with ui.column().classes('flex-1 gap-1'):
+                            ui.label(group['title']).classes('text-sm font-medium').style(title_style)
+                            
+                            # Indicateur de type de groupe (optionnel)
+                            if 'channel' in group.get('type', '').lower():
+                                ui.label('Canal').classes('text-xs').style('color: var(--accent); background: rgba(14, 165, 233, 0.1); padding: 2px 6px; border-radius: 4px;')
+                            elif 'supergroup' in group.get('type', '').lower():
+                                ui.label('Supergroupe').classes('text-xs').style('color: var(--primary); background: rgba(30, 58, 138, 0.1); padding: 2px 6px; border-radius: 4px;')
+                        
+                        # Indicateur visuel de sélection
+                        if is_selected:
+                            ui.label('✓').classes('text-sm font-bold').style('color: var(--success);')
     
     def update_counter(self):
         """Met à jour le compteur de sélection"""
         if self.counter_label:
             total = len(self.state['filtered_groups'])
             selected = len([g for g in self.state['filtered_groups'] if g['id'] in self.state['selected_groups']])
-            self.counter_label.set_text(f'Sélectionnés: {selected} / {total}')
+            
+            if selected == 0:
+                counter_style = 'background: rgba(239, 68, 68, 0.1); color: var(--danger); border-left: 3px solid var(--danger);'
+                counter_text = f'○ Aucun groupe sélectionné ({total} disponibles)'
+            elif selected == total:
+                counter_style = 'background: rgba(16, 185, 129, 0.1); color: var(--success); border-left: 3px solid var(--success);'
+                counter_text = f'✓ Tous les groupes sélectionnés ({selected}/{total})'
+            else:
+                counter_style = 'background: rgba(30, 58, 138, 0.1); color: var(--primary); border-left: 3px solid var(--primary);'
+                counter_text = f'● {selected} groupe(s) sélectionné(s) sur {total}'
+            
+            self.counter_label.set_text(counter_text)
+            self.counter_label.style(counter_style)
     
     def go_back(self):
         """Retour à l'étape précédente"""
@@ -260,33 +344,49 @@ class NewMessagePage:
     
     def render_step_3(self):
         """Étape 3 : Composition du message"""
-        with ui.card().classes('w-full p-6'):
-            ui.label('3️⃣ Composez votre message').classes('text-2xl font-bold mb-4')
+        with ui.card().classes('w-full p-6 card-modern'):
+            ui.label('③ Composez votre message').classes('text-2xl font-bold mb-4').style('color: var(--text-primary);')
             
             # Zone de texte pour le message
             ui.textarea('Message', value=self.state['message'], 
                        on_change=lambda e: self.state.update({'message': e.value})
-            ).classes('w-full').props('outlined rows=8')
+            ).classes('w-full').props('outlined rows=6')
             
-            ui.label(f"Caractères: {len(self.state['message'])}").classes('text-sm text-gray-600 mb-4')
+            # Compteur de caractères moderne
+            with ui.row().classes('w-full justify-between items-center mb-4'):
+                ui.label(f"Caractères: {len(self.state['message'])}").classes('text-sm').style('color: var(--text-secondary);')
+                if len(self.state['message']) > 0:
+                    ui.label(f"{len(self.state['message'])}/4096").classes('text-xs').style('color: var(--primary); background: rgba(30, 58, 138, 0.1); padding: 2px 8px; border-radius: 4px;')
             
-            # Upload de fichier
-            with ui.row().classes('w-full items-center gap-2 mb-4'):
-                ui.label('📎 Fichier (optionnel):').classes('font-medium')
-                
-                async def handle_upload(e):
-                    if e.name:
-                        self.state['file_path'] = e.name
-                        ui.notify(f'Fichier sélectionné: {e.name}', type='positive')
-                
-                ui.upload(on_upload=handle_upload, auto_upload=True).props('outlined')
-                
-                if self.state['file_path']:
-                    ui.label(f"✅ {self.state['file_path']}").classes('text-green-600 font-medium')
+            # Upload de fichier moderne
+            with ui.card().classes('w-full p-4').style('background: var(--bg-secondary); border: 2px dashed var(--border); border-radius: 8px;'):
+                with ui.column().classes('w-full items-center gap-3'):
+                    ui.label('📎 Ajouter un fichier').classes('font-semibold').style('color: var(--text-primary);')
+                    ui.label('Glissez-déposez un fichier ou cliquez pour sélectionner').classes('text-sm').style('color: var(--text-secondary);')
+                    
+                    async def handle_upload(e):
+                        if e.name:
+                            self.state['file_path'] = e.name
+                            ui.notify(f'Fichier ajouté: {e.name}', type='positive')
+                            # Re-render pour mettre à jour l'affichage
+                            self.render_steps()
+                    
+                    upload_widget = ui.upload(on_upload=handle_upload, auto_upload=True).props('outlined dense')
+                    
+                    if self.state['file_path']:
+                        with ui.row().classes('w-full items-center gap-2 mt-2'):
+                            ui.label('✓').classes('text-green-600')
+                            ui.label(f"{self.state['file_path']}").classes('text-sm font-medium').style('color: var(--success);')
+                            
+                            def remove_file():
+                                self.state['file_path'] = None
+                                self.render_steps()
+                            
+                            ui.button('✕', on_click=remove_file).props('flat dense').style('color: var(--danger);')
             
             # Boutons navigation
-            with ui.row().classes('w-full justify-between mt-3'):
-                ui.button('⬅️ Retour', on_click=self.go_back).props('flat size=md')
+            with ui.row().classes('w-full justify-between mt-4'):
+                ui.button('← Retour', on_click=self.go_back).props('flat size=md').style('color: var(--secondary);')
                 
                 async def next_step():
                     if not self.state['message'].strip():
@@ -303,139 +403,142 @@ class NewMessagePage:
                     self.state['current_step'] = 4
                     self.render_steps()
                 
-                ui.button('Suivant ➡️', on_click=next_step).props('color=primary size=md')
+                ui.button('→ Suivant', on_click=next_step).classes('btn-primary').props('size=md')
     
     def render_step_4(self):
-        """Étape 4 : Sélection des dates et heures"""
-        with ui.card().classes('w-full p-4'):
-            ui.label('4️⃣ Programmez les dates et heures').classes('text-2xl font-bold mb-3')
+        """Étape 4 : Sélection des dates et heures - Layout plein écran optimisé"""
+        with ui.column().classes('w-full gap-4').style('height: calc(100vh - 200px); overflow: hidden;'):
             
-            # Charger les horaires prédéfinis du compte
-            session_manager = self.telegram_manager.session_manager
-            settings = session_manager.get_account_settings(self.state['selected_account'])
-            predefined_times = settings.get('default_schedules', [])
+            # En-tête compact
+            ui.label('④ Programmez les dates et heures').classes('text-2xl font-bold mb-2').style('color: var(--text-primary);')
             
-            # Horaires temporaires (pour cette session uniquement)
-            if not hasattr(self, 'temp_times'):
-                self.temp_times = []
-            
-            # Combiner les horaires prédéfinis et temporaires
-            all_times = sorted(set(predefined_times + self.temp_times))
-            
-            # Section horaires (compact)
-            with ui.row().classes('w-full gap-4 mb-3'):
-                # Colonne gauche : Horaires
-                with ui.card().classes('flex-1 p-3 bg-blue-50'):
-                    ui.label('🕐 Horaires à utiliser').classes('font-bold mb-2')
+            # Layout principal : 2 colonnes pour utiliser toute la largeur
+            with ui.row().classes('flex-1 gap-6').style('overflow-y: auto;'):
+                
+                # COLONNE GAUCHE : Horaires + Calendrier (60% de la largeur)
+                with ui.column().classes('flex-1 gap-4').style('flex: 3;'):
                     
-                    # Liste des horaires avec gestion
-                    self.horaires_container = ui.column().classes('w-full gap-1')
-                    self.selected_times = []
-                    
-                    with self.horaires_container:
-                        if all_times:
-                            for i, time in enumerate(all_times):
-                                with ui.row().classes('w-full items-center gap-1'):
-                                    checkbox = ui.checkbox(time, value=True).classes('text-sm')
-                                    self.selected_times.append(checkbox)
-                                    
-                                    # Vérifier si c'est un horaire sauvegardé ou temporaire
-                                    is_saved = time in predefined_times
-                                    is_temp = time in self.temp_times
-                                    
-                                    if is_saved:
-                                        # Horaire sauvegardé dans les paramètres : bouton rouge
-                                        def make_delete_saved_handler(time_to_delete):
-                                            def delete_time():
-                                                predefined_times.remove(time_to_delete)
-                                                session_manager.update_account_settings(
-                                                    self.state['selected_account'],
-                                                    default_schedules=predefined_times
-                                                )
-                                                self.render_steps()
-                                                ui.notify('Horaire supprimé des paramètres', type='info')
-                                            return delete_time
-                                        ui.button('🗑️', on_click=make_delete_saved_handler(time)).props('flat dense size=xs color=red')
-                                    elif is_temp:
-                                        # Horaire temporaire : bouton orange
-                                        def make_delete_temp_handler(time_to_delete):
-                                            def delete_time():
-                                                self.temp_times.remove(time_to_delete)
-                                                self.render_steps()
-                                                ui.notify('Horaire temporaire supprimé', type='info')
-                                            return delete_time
-                                        ui.button('⏳', on_click=make_delete_temp_handler(time)).props('flat dense size=xs color=orange')
-                        else:
-                            ui.label('Aucun horaire').classes('text-xs text-gray-500')
-                    
-                    # Ajouter un horaire
-                    with ui.row().classes('w-full gap-1 mt-2'):
-                        time_input = ui.input(placeholder='HH:MM').classes('flex-1').props('dense')
-                        
-                        def add_time():
-                            time_str = time_input.value.strip()
-                            if time_str:
-                                try:
-                                    h, m = map(int, time_str.split(':'))
-                                    if 0 <= h <= 23 and 0 <= m <= 59:
-                                        formatted = f"{h:02d}:{m:02d}"
-                                        # Vérifier si déjà existant (sauvegardé ou temporaire)
-                                        if formatted not in all_times:
-                                            # Ajouter comme horaire TEMPORAIRE
-                                            self.temp_times.append(formatted)
-                                            self.temp_times.sort()
-                                            time_input.value = ''
-                                            self.render_steps()
-                                            ui.notify('⏳ Horaire temporaire ajouté', type='positive')
+                    # SECTION 1: Horaires (en haut, compact)
+                    with ui.card().classes('p-4 card-modern').style('background: rgba(30, 58, 138, 0.05); border-left: 3px solid var(--primary);'):
+                        with ui.row().classes('w-full items-center gap-4'):
+                            ui.label('🕐 Horaires à utiliser').classes('font-bold').style('color: var(--primary);')
+                            
+                            # Charger les horaires
+                            session_manager = self.telegram_manager.session_manager
+                            settings = session_manager.get_account_settings(self.state['selected_account'])
+                            predefined_times = settings.get('default_schedules', [])
+                            
+                            if not hasattr(self, 'temp_times'):
+                                self.temp_times = []
+                            
+                            all_times = sorted(set(predefined_times + self.temp_times))
+                            self.selected_times = []
+                            
+                            # Horaires existants en ligne
+                            with ui.row().classes('gap-2 flex-wrap flex-1'):
+                                for i, time in enumerate(all_times):
+                                    with ui.row().classes('items-center gap-1'):
+                                        checkbox = ui.checkbox(time, value=True).classes('text-sm')
+                                        self.selected_times.append(checkbox)
+                                        
+                                        is_saved = time in predefined_times
+                                        if is_saved:
+                                            def make_delete_saved_handler(time_to_delete):
+                                                def delete_time():
+                                                    predefined_times.remove(time_to_delete)
+                                                    session_manager.update_account_settings(
+                                                        self.state['selected_account'],
+                                                        default_schedules=predefined_times
+                                                    )
+                                                    ui.notify('Horaire supprimé', type='info')
+                                                    self.render_steps()
+                                                return delete_time
+                                            ui.button('✕', on_click=make_delete_saved_handler(time)).props('flat dense').style('color: var(--danger);')
                                         else:
-                                            ui.notify('Déjà existant', type='warning')
-                                    else:
-                                        ui.notify('Format invalide', type='warning')
-                                except:
-                                    ui.notify('Format invalide (HH:MM)', type='warning')
+                                            def make_delete_temp_handler(time_to_delete):
+                                                def delete_time():
+                                                    self.temp_times.remove(time_to_delete)
+                                                    ui.notify('Horaire supprimé', type='info')
+                                                    self.render_steps()
+                                                return delete_time
+                                            ui.button('⏳', on_click=make_delete_temp_handler(time)).props('flat dense').style('color: var(--warning);')
+                            
+                            # Ajouter un horaire
+                            with ui.row().classes('gap-2'):
+                                time_input = ui.input(placeholder='HH:MM').props('dense outlined').style('width: 80px;')
+                                
+                                def add_time():
+                                    time_str = time_input.value.strip()
+                                    if time_str:
+                                        try:
+                                            h, m = map(int, time_str.split(':'))
+                                            if 0 <= h <= 23 and 0 <= m <= 59:
+                                                formatted = f"{h:02d}:{m:02d}"
+                                                if formatted not in all_times:
+                                                    self.temp_times.append(formatted)
+                                                    self.temp_times.sort()
+                                                    time_input.value = ''
+                                                    ui.notify('Horaire ajouté', type='positive')
+                                                    self.render_steps()
+                                                else:
+                                                    ui.notify('Déjà existant', type='warning')
+                                            else:
+                                                ui.notify('Format invalide', type='warning')
+                                        except:
+                                            ui.notify('Format invalide (HH:MM)', type='warning')
+                                
+                                ui.button('＋', on_click=add_time).props('outline dense').style('color: var(--accent);')
+                    
+                    # SECTION 2: Calendrier (pleine largeur de la colonne)
+                    with ui.card().classes('p-4 card-modern'):
+                        ui.label('📅 Calendrier').classes('font-bold mb-3').style('color: var(--text-primary);')
+                        self.create_calendar()
+                
+                # COLONNE DROITE : Résumé et Actions (40% de la largeur)
+                with ui.column().classes('gap-4').style('flex: 2; min-width: 350px;'):
+                    
+                    # Compteur de dates
+                    with ui.card().classes('p-4 card-modern').style('background: rgba(16, 185, 129, 0.05); border-left: 3px solid var(--success);'):
+                        ui.label(f'📋 {len(self.state["selected_dates"])} date(s) programmée(s)').classes('font-bold').style('color: var(--success);')
+                    
+                    # Actions rapides
+                    with ui.card().classes('p-4 card-modern'):
+                        ui.label('Actions rapides').classes('font-semibold mb-3').style('color: var(--text-primary);')
                         
-                        ui.button('➕ Temp', on_click=add_time).props('dense flat color=orange').classes('text-xs')
-                
-                # Colonne droite : Boutons rapides + Compteur
-                with ui.column().classes('gap-2'):
-                    with ui.card().classes('p-2 bg-green-50'):
-                        ui.label(f'📋 {len(self.state["selected_dates"])} dates').classes('font-bold text-sm text-center')
+                        with ui.column().classes('gap-2'):
+                            ui.button('📅 Ajouter 7 jours', on_click=self.add_week).props('outline').style('color: var(--accent);').classes('w-full')
+                            ui.button('📅 Ajouter 30 jours', on_click=self.add_month).props('outline').style('color: var(--primary);').classes('w-full')
+                            ui.button('🗑️ Effacer toutes les dates', on_click=self.clear_all_dates).props('outline').style('color: var(--danger);').classes('w-full')
                     
-                    ui.button('7J', on_click=self.add_week).props('dense color=blue').classes('w-full')
-                    ui.button('30J', on_click=self.add_month).props('dense color=purple').classes('w-full')
-                    ui.button('🗑️', on_click=self.clear_all_dates).props('dense flat color=red').classes('w-full')
+                    # Liste des dates sélectionnées
+                    with ui.card().classes('p-4 card-modern flex-1').style('min-height: 300px;'):
+                        ui.label('Dates sélectionnées').classes('font-semibold mb-3').style('color: var(--text-primary);')
+                        
+                        if self.state['selected_dates']:
+                            with ui.column().classes('gap-2').style('max-height: 400px; overflow-y: auto;'):
+                                for i, dt in enumerate(sorted(self.state['selected_dates'])):
+                                    with ui.card().classes('p-3').style('background: var(--bg-secondary); border: 1px solid var(--border);'):
+                                        with ui.row().classes('w-full items-center gap-3'):
+                                            with ui.column().classes('flex-1 gap-1'):
+                                                ui.label(dt.strftime('%d/%m/%Y')).classes('font-semibold').style('color: var(--text-primary);')
+                                                ui.label(dt.strftime('%H:%M')).classes('text-sm').style('color: var(--text-secondary);')
+                                            
+                                            def make_remove_handler(idx):
+                                                def handler():
+                                                    self.state['selected_dates'].pop(idx)
+                                                    self.render_steps()
+                                                return handler
+                                            
+                                            ui.button('✕', on_click=make_remove_handler(i)).props('flat dense').style('color: var(--danger);')
+                        else:
+                            ui.label('Aucune date sélectionnée').classes('text-center').style('color: var(--text-secondary); padding: 40px;')
+                            ui.label('Sélectionnez des dates dans le calendrier à gauche').classes('text-sm text-center').style('color: var(--text-secondary);')
             
-            # Layout : Calendrier à gauche + Liste à droite
-            with ui.row().classes('w-full gap-3 mb-3'):
-                # Calendrier à gauche
-                with ui.card().classes('p-3'):
-                    ui.label('📅 Calendrier').classes('font-bold mb-2')
-                    self.create_calendar()
-                
-                # Liste des dates à droite
-                with ui.card().classes('flex-1 p-3 bg-gray-50'):
-                    ui.label(f'📋 {len(self.state["selected_dates"])} date(s) programmée(s)').classes('font-bold mb-2')
-                    
-                    if self.state['selected_dates']:
-                        with ui.column().classes('w-full gap-1 max-h-96 overflow-auto'):
-                            for i, dt in enumerate(sorted(self.state['selected_dates'])):
-                                with ui.row().classes('w-full items-center gap-2 p-1 hover:bg-gray-100'):
-                                    ui.label(dt.strftime('%d/%m/%Y %H:%M')).classes('flex-1 text-sm')
-                                    
-                                    def make_remove_handler(idx):
-                                        def handler():
-                                            self.state['selected_dates'].pop(idx)
-                                            self.render_steps()
-                                        return handler
-                                    
-                                    ui.button('🗑️', on_click=make_remove_handler(i)).props('flat dense size=sm color=red')
-                    else:
-                        ui.label('Sélectionnez des dates dans le calendrier').classes('text-gray-500 text-sm italic')
-            
-            # Boutons navigation
-            with ui.row().classes('w-full justify-between mt-3'):
-                ui.button('⬅️ Retour', on_click=self.go_back).props('flat size=md')
-                ui.button('🚀 Envoyer', on_click=self.send_scheduled_messages).props('color=positive size=md')
+            # Boutons de navigation fixes
+            with ui.card().classes('w-full p-4 card-modern').style('border-top: 1px solid var(--border); background: white;'):
+                with ui.row().classes('w-full justify-between'):
+                    ui.button('← Retour', on_click=self.go_back).props('flat size=md').style('color: var(--secondary);')
+                    ui.button('✓ Envoyer', on_click=self.send_scheduled_messages).classes('btn-primary').props('size=lg').style('background: var(--success);')
     
     def create_calendar(self):
         """Crée un calendrier pour sélectionner les dates"""
@@ -594,8 +697,8 @@ class NewMessagePage:
         self.state['selected_dates'] = []
         if hasattr(self, 'calendar_dates'):
             self.calendar_dates.clear()
-        self.render_steps()
         ui.notify('Toutes les dates ont été supprimées', type='info')
+        self.render_steps()
     
     def add_week(self):
         """Ajoute une semaine de dates avec les horaires sélectionnés"""
@@ -622,8 +725,8 @@ class NewMessagePage:
                 if dt not in self.state['selected_dates']:
                     self.state['selected_dates'].append(dt)
         
-        self.render_steps()
         ui.notify(f'Une semaine ajoutée ({len(predefined_times)} horaire(s) par jour)', type='positive')
+        self.render_steps()
     
     def add_month(self):
         """Ajoute un mois de dates avec les horaires sélectionnés"""
@@ -650,8 +753,8 @@ class NewMessagePage:
                 if dt not in self.state['selected_dates']:
                     self.state['selected_dates'].append(dt)
         
-        self.render_steps()
         ui.notify(f'Un mois ajouté ({len(predefined_times)} horaire(s) par jour)', type='positive')
+        self.render_steps()
     
     async def send_scheduled_messages(self):
         """Envoie les messages programmés"""
@@ -665,9 +768,9 @@ class NewMessagePage:
         # Dialog de progression (persistant, ne se ferme pas en cliquant à l'extérieur)
         dialog = ui.dialog().props('persistent')
         
-        with dialog, ui.card().classes('w-[500px] p-6'):
+        with dialog, ui.card().classes('w-[500px] p-6 card-modern'):
             # Titre
-            ui.label('📤 Envoi des messages programmés').classes('text-xl font-bold mb-4 text-center')
+            ui.label('⏱ Envoi des messages programmés').classes('text-xl font-bold mb-4 text-center').style('color: var(--text-primary);')
             
             # CSS pour stabiliser la barre et cacher les chiffres par défaut de Quasar
             ui.add_head_html('''
@@ -676,10 +779,21 @@ class NewMessagePage:
                         height: 28px !important;
                         border-radius: 6px !important;
                     }
-                    /* Cacher UNIQUEMENT les chiffres générés par Quasar */
+                    /* Cacher TOUS les chiffres générés par Quasar */
                     .q-linear-progress__track::after,
-                    .q-linear-progress__model::after {
+                    .q-linear-progress__model::after,
+                    .q-linear-progress::after,
+                    .q-linear-progress::before {
                         content: '' !important;
+                        display: none !important;
+                        visibility: hidden !important;
+                    }
+                    /* Masquer le texte de la barre de progression */
+                    .q-linear-progress .q-linear-progress__text {
+                        display: none !important;
+                    }
+                    /* Masquer tous les éléments texte dans la barre */
+                    .q-linear-progress span {
                         display: none !important;
                     }
                 </style>
@@ -687,8 +801,8 @@ class NewMessagePage:
             
             # Conteneur pour superposer le pourcentage sur la barre
             with ui.element('div').classes('w-full mb-4').style('position: relative;'):
-                # Barre de progression (en bleu vif) - instant=true pour désactiver l'affichage de la valeur
-                progress = ui.linear_progress(0).props('instant color=blue size=28px rounded').classes('w-full')
+                # Barre de progression (en bleu vif) - show-value=false pour masquer la valeur par défaut
+                progress = ui.linear_progress(0).props('show-value=false color=blue size=28px rounded').classes('w-full')
                 
                 # Pourcentage superposé AU CENTRE de la barre
                 progress_percent = ui.label('0%').classes('text-base font-bold').style(

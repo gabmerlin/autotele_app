@@ -8,7 +8,7 @@ from pathlib import Path
 
 from telethon import TelegramClient
 from telethon.tl.types import Channel, Chat, User
-from telethon.tl.functions.messages import GetDialogsRequest
+from telethon.tl.functions.messages import GetDialogsRequest, GetScheduledHistoryRequest
 from telethon.tl.types import InputPeerEmpty
 from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, FloodWaitError
 
@@ -284,10 +284,10 @@ class TelegramAccount:
             self.logger.error(f"Erreur récupération infos compte: {e}")
             return None
     
-    async def get_all_scheduled_messages(self, limit_groups: int = 50) -> List[Dict]:
+    async def get_all_scheduled_messages(self, limit_groups: int = None) -> List[Dict]:
         """
-        Récupère les messages programmés de tous les groupes/canaux du compte
-        limit_groups: nombre maximum de groupes à scanner (pour éviter les timeouts)
+        Récupère TOUS les messages programmés de TOUS les groupes/canaux du compte
+        SANS AUCUNE LIMITE - Scan complet exhaustif
         """
         if not self.is_connected:
             return []
@@ -295,54 +295,117 @@ class TelegramAccount:
         try:
             all_scheduled = []
             
-            # Récupérer les dialogues (limité)
+            # Récupérer TOUS les dialogues
             dialogs = await self.get_dialogs()
             
-            # Limiter le nombre de groupes scannés
-            dialogs = dialogs[:limit_groups]
-            
-            self.logger.info(f"🔍 Scan de {len(dialogs)} groupe(s) pour messages programmés...")
+            # PAS de limite de groupes - scanner TOUT
+            self.logger.info(f"🔍 Scan COMPLET de {len(dialogs)} groupe(s) pour TOUS les messages programmés...")
+            self.logger.info(f"⏳ Cela peut prendre plusieurs secondes selon le nombre de groupes...")
             
             for i, dialog in enumerate(dialogs):
                 chat_id = dialog['id']
                 chat_title = dialog['title']
                 
                 try:
-                    # Récupérer les messages programmés de ce chat (limité à 50 par groupe)
-                    scheduled_messages = await self.client.get_messages(chat_id, scheduled=True, limit=50)
+                    # Récupérer TOUS les messages programmés de ce chat
+                    # Utilisation de l'API bas niveau pour plus de fiabilité
+                    scheduled_messages = []
                     
-                    if scheduled_messages:
-                        for msg in scheduled_messages:
-                            scheduled_info = {
-                                "message_id": msg.id,
-                                "chat_id": chat_id,
-                                "chat_title": chat_title,
-                                "text": msg.text or msg.message or "[Fichier]",
-                                "date": msg.date,
-                                "has_media": msg.media is not None,
-                                "media_type": type(msg.media).__name__ if msg.media else None
-                            }
-                            all_scheduled.append(scheduled_info)
+                    # Méthode 1 : Essayer avec l'API bas niveau GetScheduledHistoryRequest
+                    try:
+                        peer = await self.client.get_input_entity(chat_id)
+                        result = await self.client(GetScheduledHistoryRequest(
+                            peer=peer,
+                            hash=0  # 0 = récupérer tous les messages
+                        ))
                         
-                        self.logger.info(f"✅ {chat_title}: {len(scheduled_messages)} message(s)")
+                        if hasattr(result, 'messages') and result.messages:
+                            for msg in result.messages:
+                                scheduled_info = {
+                                    "message_id": msg.id,
+                                    "chat_id": chat_id,
+                                    "chat_title": chat_title,
+                                    "text": getattr(msg, 'message', None) or getattr(msg, 'text', None) or "[Fichier]",
+                                    "date": msg.date,
+                                    "has_media": hasattr(msg, 'media') and msg.media is not None,
+                                    "media_type": type(msg.media).__name__ if hasattr(msg, 'media') and msg.media else None
+                                }
+                                scheduled_messages.append(scheduled_info)
+                                all_scheduled.append(scheduled_info)
+                            
+                            self.logger.info(f"✅ {chat_title}: {len(scheduled_messages)} message(s) programmé(s) [API bas niveau]")
+                        else:
+                            self.logger.debug(f"➖ {chat_title}: 0 message [API bas niveau]")
+                    
+                    except Exception as api_error:
+                        # Fallback : Essayer avec iter_messages
+                        self.logger.debug(f"API bas niveau échouée pour {chat_title}: {str(api_error)[:50]}, essai avec iter_messages")
+                        try:
+                            async for msg in self.client.iter_messages(chat_id, scheduled=True):
+                                scheduled_info = {
+                                    "message_id": msg.id,
+                                    "chat_id": chat_id,
+                                    "chat_title": chat_title,
+                                    "text": msg.text or msg.message or "[Fichier]",
+                                    "date": msg.date,
+                                    "has_media": msg.media is not None,
+                                    "media_type": type(msg.media).__name__ if msg.media else None
+                                }
+                                scheduled_messages.append(scheduled_info)
+                                all_scheduled.append(scheduled_info)
+                            
+                            if scheduled_messages:
+                                self.logger.info(f"✅ {chat_title}: {len(scheduled_messages)} message(s) programmé(s) [iter_messages]")
+                            else:
+                                self.logger.debug(f"➖ {chat_title}: 0 message [iter_messages]")
+                        
+                        except Exception as iter_error:
+                            # Dernier fallback : get_messages avec limite haute
+                            self.logger.debug(f"iter_messages échoué pour {chat_title}: {str(iter_error)[:50]}, essai avec get_messages")
+                            batch = await self.client.get_messages(chat_id, scheduled=True, limit=10000)
+                            if batch:
+                                for msg in batch:
+                                    scheduled_info = {
+                                        "message_id": msg.id,
+                                        "chat_id": chat_id,
+                                        "chat_title": chat_title,
+                                        "text": msg.text or msg.message or "[Fichier]",
+                                        "date": msg.date,
+                                        "has_media": msg.media is not None,
+                                        "media_type": type(msg.media).__name__ if msg.media else None
+                                    }
+                                    scheduled_messages.append(scheduled_info)
+                                    all_scheduled.append(scheduled_info)
+                                
+                                if scheduled_messages:
+                                    self.logger.info(f"✅ {chat_title}: {len(scheduled_messages)} message(s) programmé(s) [get_messages]")
+                                else:
+                                    self.logger.debug(f"➖ {chat_title}: 0 message [get_messages]")
+                            else:
+                                self.logger.debug(f"➖ {chat_title}: 0 message [get_messages]")
+                    
+                    # Petit délai pour éviter les rate limits Telegram (50ms)
+                    await asyncio.sleep(0.05)
                     
                 except Exception as e:
                     # Certains groupes peuvent ne pas autoriser la récupération
-                    self.logger.debug(f"⚠️ {chat_title}: {str(e)[:50]}")
+                    self.logger.debug(f"⚠️ {chat_title}: Erreur - {str(e)[:80]}")
                     continue
                 
                 # Log de progression tous les 10 groupes
                 if (i + 1) % 10 == 0:
-                    self.logger.info(f"📊 Progression: {i + 1}/{len(dialogs)} groupes scannés")
+                    self.logger.info(f"📊 Progression: {i + 1}/{len(dialogs)} groupes scannés - {len(all_scheduled)} messages trouvés")
             
             # Trier par date
             all_scheduled.sort(key=lambda x: x['date'])
             
-            self.logger.info(f"✅ Total: {len(all_scheduled)} message(s) programmé(s) trouvé(s)")
+            self.logger.info(f"✅ SCAN TERMINÉ: {len(all_scheduled)} message(s) programmé(s) trouvé(s) dans {len(dialogs)} groupes")
             return all_scheduled
             
         except Exception as e:
             self.logger.error(f"Erreur récupération messages programmés: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
             return []
     
     async def delete_scheduled_messages(self, chat_id: int, message_ids: list = None) -> Tuple[bool, str]:
