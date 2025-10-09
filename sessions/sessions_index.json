@@ -1,1 +1,27 @@
-{}
+{
+  "session_33630179849": {
+    "session_id": "session_33630179849",
+    "phone": "+33630179849",
+    "api_id": 21211112,
+    "api_hash": "64342ccdb7588fe8648219265ff5f846",
+    "account_name": "Gab",
+    "created_at": "2025-10-09T10:57:39.159973",
+    "last_used": "2025-10-09T15:16:07.229082",
+    "status": "active",
+    "default_message": "📢 [🇲🇬🇲🇬🇲🇬 RECRUTEMENT CHATTEURS 🇲🇬🇲🇬🇲🇬]🧠💻\nTu es un chatteur EXPERIMENTE\n \nEt tu veux rejoindre une agence sérieuse qui tourne à +50K€/mois ? Alors lis bien 👇\n\n🎯 Ce que notre agence propose :\n\n• Environ 250subs/day 🏆\n• Payé entre 10% & 12% de votre CA 😍\n\n👉 Fais la diff, rejoins les meilleurs.\n\nSi vous n'êtes PAS RECONTACTER, c'est que votre profil n'a PAS attiré notre ATTENTION\n \n\nRemplissez ce formulaire !\n\nhttps://tally.so/r/mBMxEN",
+    "default_schedules": [
+      "07:00",
+      "13:00"
+    ]
+  },
+  "session_393518914754": {
+    "session_id": "session_393518914754",
+    "phone": "+393518914754",
+    "api_id": 21211112,
+    "api_hash": "64342ccdb7588fe8648219265ff5f846",
+    "account_name": "Lilou",
+    "created_at": "2025-10-09T11:51:36.942812",
+    "last_used": "2025-10-09T15:16:07.452930",
+    "status": "active"
+  }
+}

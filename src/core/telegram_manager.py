@@ -284,6 +284,67 @@ class TelegramAccount:
             self.logger.error(f"Erreur récupération infos compte: {e}")
             return None
     
+    async def get_all_scheduled_messages(self, limit_groups: int = 50) -> List[Dict]:
+        """
+        Récupère les messages programmés de tous les groupes/canaux du compte
+        limit_groups: nombre maximum de groupes à scanner (pour éviter les timeouts)
+        """
+        if not self.is_connected:
+            return []
+        
+        try:
+            all_scheduled = []
+            
+            # Récupérer les dialogues (limité)
+            dialogs = await self.get_dialogs()
+            
+            # Limiter le nombre de groupes scannés
+            dialogs = dialogs[:limit_groups]
+            
+            self.logger.info(f"🔍 Scan de {len(dialogs)} groupe(s) pour messages programmés...")
+            
+            for i, dialog in enumerate(dialogs):
+                chat_id = dialog['id']
+                chat_title = dialog['title']
+                
+                try:
+                    # Récupérer les messages programmés de ce chat (limité à 50 par groupe)
+                    scheduled_messages = await self.client.get_messages(chat_id, scheduled=True, limit=50)
+                    
+                    if scheduled_messages:
+                        for msg in scheduled_messages:
+                            scheduled_info = {
+                                "message_id": msg.id,
+                                "chat_id": chat_id,
+                                "chat_title": chat_title,
+                                "text": msg.text or msg.message or "[Fichier]",
+                                "date": msg.date,
+                                "has_media": msg.media is not None,
+                                "media_type": type(msg.media).__name__ if msg.media else None
+                            }
+                            all_scheduled.append(scheduled_info)
+                        
+                        self.logger.info(f"✅ {chat_title}: {len(scheduled_messages)} message(s)")
+                    
+                except Exception as e:
+                    # Certains groupes peuvent ne pas autoriser la récupération
+                    self.logger.debug(f"⚠️ {chat_title}: {str(e)[:50]}")
+                    continue
+                
+                # Log de progression tous les 10 groupes
+                if (i + 1) % 10 == 0:
+                    self.logger.info(f"📊 Progression: {i + 1}/{len(dialogs)} groupes scannés")
+            
+            # Trier par date
+            all_scheduled.sort(key=lambda x: x['date'])
+            
+            self.logger.info(f"✅ Total: {len(all_scheduled)} message(s) programmé(s) trouvé(s)")
+            return all_scheduled
+            
+        except Exception as e:
+            self.logger.error(f"Erreur récupération messages programmés: {e}")
+            return []
+    
     async def delete_scheduled_messages(self, chat_id: int, message_ids: list = None) -> Tuple[bool, str]:
         """
         Supprime des messages programmés dans un groupe
@@ -298,15 +359,24 @@ class TelegramAccount:
                 chat_id = int(chat_id)
             
             if message_ids:
-                # Supprimer des messages spécifiques
-                await self.client.delete_messages(chat_id, message_ids)
+                # Supprimer des messages programmés spécifiques
+                # Pour les messages programmés, il faut utiliser delete_messages avec scheduled=True
+                from telethon.tl.functions.messages import DeleteScheduledMessagesRequest
+                await self.client(DeleteScheduledMessagesRequest(
+                    peer=chat_id,
+                    id=message_ids
+                ))
                 self.logger.info(f"🗑️ {len(message_ids)} message(s) programmé(s) supprimé(s) dans chat {chat_id}")
             else:
                 # Récupérer tous les messages programmés et les supprimer
                 scheduled_messages = await self.client.get_messages(chat_id, scheduled=True, limit=100)
                 if scheduled_messages:
                     msg_ids = [msg.id for msg in scheduled_messages]
-                    await self.client.delete_messages(chat_id, msg_ids)
+                    from telethon.tl.functions.messages import DeleteScheduledMessagesRequest
+                    await self.client(DeleteScheduledMessagesRequest(
+                        peer=chat_id,
+                        id=msg_ids
+                    ))
                     self.logger.info(f"🗑️ {len(msg_ids)} message(s) programmé(s) supprimé(s) dans chat {chat_id}")
                 else:
                     self.logger.info(f"Aucun message programmé trouvé dans chat {chat_id}")
@@ -316,6 +386,8 @@ class TelegramAccount:
         except Exception as e:
             error_msg = f"Erreur suppression messages programmés: {e}"
             self.logger.error(error_msg)
+            import traceback
+            self.logger.error(traceback.format_exc())
             return False, error_msg
 
 
@@ -443,10 +515,18 @@ class TelegramManager:
                 "session_id": acc.session_id,
                 "account_name": acc.account_name,
                 "phone": acc.phone,
-                "is_connected": acc.is_connected
+                "is_connected": acc.is_connected,
+                "settings": self.session_manager.get_account_settings(acc.session_id)
             }
             for acc in self.accounts.values()
         ]
+    
+    def update_account_name(self, session_id: str, account_name: str):
+        """Met à jour le nom d'un compte"""
+        if session_id in self.accounts:
+            self.accounts[session_id].account_name = account_name
+        self.session_manager.update_account_name(session_id, account_name)
+        self.logger.info(f"Nom du compte mis à jour: {session_id} -> {account_name}")
     
     async def remove_account(self, session_id: str):
         """Supprime un compte"""

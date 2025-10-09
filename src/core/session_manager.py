@@ -113,4 +113,30 @@ class SessionManager:
             session for session in self.sessions_index.values()
             if session.get("status") == "active"
         ]
+    
+    def update_account_name(self, session_id: str, account_name: str):
+        """Met à jour le nom d'un compte"""
+        if session_id in self.sessions_index:
+            self.sessions_index[session_id]["account_name"] = account_name
+            self._save_index()
+            self.logger.info(f"Nom du compte mis à jour pour: {session_id}")
+    
+    def update_account_settings(self, session_id: str, default_message: str = None, 
+                               default_schedules: List[str] = None):
+        """Met à jour les paramètres prédéfinis d'un compte"""
+        if session_id in self.sessions_index:
+            if default_message is not None:
+                self.sessions_index[session_id]["default_message"] = default_message
+            if default_schedules is not None:
+                self.sessions_index[session_id]["default_schedules"] = default_schedules
+            self._save_index()
+            self.logger.info(f"Paramètres mis à jour pour: {session_id}")
+    
+    def get_account_settings(self, session_id: str) -> Dict:
+        """Récupère les paramètres prédéfinis d'un compte"""
+        session = self.sessions_index.get(session_id, {})
+        return {
+            "default_message": session.get("default_message", ""),
+            "default_schedules": session.get("default_schedules", [])
+        }
 

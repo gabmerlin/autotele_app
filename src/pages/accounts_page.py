@@ -1,99 +1,23 @@
 """
-AutoTele - Application de planification Telegram
-Interface simple avec NiceGUI
+Page de gestion des comptes Telegram
 """
-import sys
-import asyncio
-from pathlib import Path
-from typing import Optional
-
-# Ajouter le répertoire src au path
-sys.path.insert(0, str(Path(__file__).parent))
-
 from nicegui import ui
 from utils.logger import get_logger
-from core.telegram_manager import TelegramManager
-from pages.accounts_page import AccountsPage
-from pages.new_message_page import NewMessagePage
-from pages.scheduled_messages_page import ScheduledMessagesPage
 
 logger = get_logger()
 
 
-class AutoTeleApp:
-    """Application principale AutoTele"""
+class AccountsPage:
+    """Page de gestion des comptes"""
     
-    def __init__(self):
-        self.current_page = 'comptes'
-        self.content_area = None
-        self.telegram_manager = TelegramManager()
+    def __init__(self, telegram_manager, app=None):
+        self.telegram_manager = telegram_manager
+        self.app = app
         self.temp_phone = None
         self.temp_session_id = None
-        self.verification_dialog_instance = None
-        
-        # Pages refactorisées
-        self.accounts_page = AccountsPage(self.telegram_manager, self)
-        self.new_message_page = NewMessagePage(self.telegram_manager)
-        self.scheduled_messages_page = ScheduledMessagesPage(self.telegram_manager)
     
-    async def load_existing_sessions(self):
-        """Charge les sessions existantes au démarrage"""
-        try:
-            # Charger les sessions avec la méthode async qui fait tout
-            await self.telegram_manager.load_existing_sessions()
-            
-            # Compter les comptes chargés
-            nb_accounts = len(self.telegram_manager.list_accounts())
-            
-            # Rafraîchir la page des comptes pour afficher les sessions
-            if nb_accounts > 0:
-                self.show_page('comptes')
-        except Exception as e:
-            logger.error(f"Erreur chargement sessions: {e}")
-    
-    def create_sidebar(self):
-        """Crée le menu latéral gauche"""
-        with ui.column().classes('w-64 h-screen bg-gray-100 p-4 gap-2'):
-            # Logo/Titre
-            ui.label('🚀 AutoTele').classes('text-2xl font-bold mb-4')
-            ui.separator()
-            
-            # Menu items
-            ui.button('📱 Compte Telegram', on_click=lambda: self.show_page('comptes')).props('flat align=left').classes('w-full')
-            ui.button('✉️ Nouveau Messages', on_click=lambda: self.show_page('nouveau')).props('flat align=left').classes('w-full')
-            ui.button('📤 Envoi en cours', on_click=lambda: self.show_page('envoi')).props('flat align=left').classes('w-full')
-            ui.button('📅 Messages Programmé', on_click=lambda: self.show_page('programme')).props('flat align=left').classes('w-full')
-            
-            ui.space()
-            
-            # Footer
-            with ui.row().classes('items-center gap-2'):
-                ui.label('Version 2.0').classes('text-xs text-gray-500')
-    
-    def show_page(self, page_name: str):
-        """Affiche une page spécifique"""
-        self.current_page = page_name
-        
-        if self.content_area:
-            self.content_area.clear()
-            
-            with self.content_area:
-                if page_name == 'comptes':
-                    self.page_comptes()
-                elif page_name == 'nouveau':
-                    # Utiliser la page refactorisée
-                    self.new_message_page.render()
-                elif page_name == 'envoi':
-                    self.page_envoi()
-                elif page_name == 'programme':
-                    # Utiliser la page refactorisée
-                    self.scheduled_messages_page.render()
-            
-            # Forcer le rafraîchissement de NiceGUI
-            self.content_area.update()
-    
-    def page_comptes(self):
-        """Page de gestion des comptes Telegram"""
+    def render(self):
+        """Rendu de la page des comptes"""
         with ui.column().classes('w-full gap-4 p-6'):
             ui.label('📱 Compte Telegram').classes('text-3xl font-bold')
             ui.separator()
@@ -112,9 +36,9 @@ class AutoTeleApp:
                             
                             # Boutons d'action
                             with ui.row().classes('gap-2'):
+                                ui.button('⚙️ Paramètres', on_click=lambda a=account: self.open_account_settings(a)).props('flat color=blue')
                                 if not account.get('is_connected', False):
                                     ui.button('🔄 Se reconnecter', on_click=lambda a=account: self.reconnect_account(a)).props('flat color=orange')
-                                ui.button('⚙️ Paramètres', on_click=lambda a=account: self.account_settings_dialog(a)).props('flat color=blue')
                                 ui.button('🗑️ Supprimer', on_click=lambda a=account: self.delete_account(a)).props('flat color=red')
             else:
                 with ui.card().classes('w-full p-6'):
@@ -123,10 +47,6 @@ class AutoTeleApp:
             
             # Bouton ajouter
             ui.button('➕ Ajouter un compte', on_click=self.add_account_dialog).props('color=primary size=lg').classes('w-full')
-            
-            # Bouton de secours pour le popup de vérification
-            if self.temp_phone and self.temp_session_id:
-                ui.button('🔐 Ouvrir popup de vérification', on_click=self.create_verification_dialog).props('color=accent size=lg').classes('w-full mt-2')
     
     async def add_account_dialog(self):
         """Dialogue pour ajouter un compte"""
@@ -134,11 +54,11 @@ class AutoTeleApp:
             ui.label('➕ Ajouter un compte Telegram').classes('text-2xl font-bold mb-4')
             
             with ui.column().classes('w-full gap-4'):
+                ui.label('Nom de compte').classes('font-medium')
+                name_input = ui.input(placeholder='Ex: Mon Compte Pro').classes('w-full')
+                
                 ui.label('Numéro de téléphone').classes('font-medium')
                 phone_input = ui.input(placeholder='+33612345678').classes('w-full')
-                
-                ui.label('Nom du compte (optionnel)').classes('font-medium')
-                name_input = ui.input(placeholder='Ex: Mon Compte Pro').classes('w-full')
                 
                 with ui.card().classes('bg-blue-50 p-3'):
                     ui.label('✅ Simple : Entrez votre numéro, recevez le code, connectez-vous !').classes('text-sm text-blue-800')
@@ -147,6 +67,10 @@ class AutoTeleApp:
                     name = name_input.value.strip()
                     phone = phone_input.value.strip()
                     
+                    if not name:
+                        ui.notify('Veuillez entrer un nom de compte', type='warning')
+                        return
+                    
                     if not phone:
                         ui.notify('Veuillez entrer un numéro de téléphone', type='warning')
                         return
@@ -154,10 +78,6 @@ class AutoTeleApp:
                     if not phone.startswith('+'):
                         ui.notify('Le numéro doit commencer par + (ex: +33612345678)', type='warning')
                         return
-                    
-                    # Si pas de nom, utiliser le numéro comme nom
-                    if not name:
-                        name = f"Compte {phone}"
                     
                     try:
                         ui.notify('Envoi du code de vérification...', type='info')
@@ -170,7 +90,7 @@ class AutoTeleApp:
                             self.temp_session_id = session_id
                             ui.notify('Code envoyé ! Vérifiez votre Telegram', type='positive')
                             
-                            # Créer le dialog de vérification dans le même contexte
+                            # Créer le dialog de vérification
                             verification_dialog = ui.dialog().props('persistent')
                             
                             with verification_dialog, ui.card().classes('w-96 p-6'):
@@ -207,8 +127,9 @@ class AutoTeleApp:
                                                 ui.notify('✅ Compte ajouté avec succès !', type='positive')
                                                 self.temp_phone = None
                                                 self.temp_session_id = None
-                                                # Rafraîchir après un court délai
-                                                ui.timer(0.2, lambda: self.show_page('comptes'), once=True)
+                                                # Rafraîchir la page
+                                                if self.app:
+                                                    ui.timer(0.2, lambda: self.app.show_page('comptes'), once=True)
                                             else:
                                                 ui.notify(f'❌ {error}', type='negative')
                                         
@@ -231,66 +152,6 @@ class AutoTeleApp:
                 with ui.row().classes('w-full justify-end gap-2 mt-4'):
                     ui.button('Annuler', on_click=dialog.close).props('flat')
                     ui.button('Continuer', on_click=submit).props('color=primary')
-        
-        dialog.open()
-    
-    def open_verification_popup(self):
-        """Ouvre le popup de vérification"""
-        if self.verification_dialog_instance:
-            self.verification_dialog_instance.close()
-        self.create_verification_dialog()
-    
-    def create_verification_dialog(self):
-        """Crée et ouvre le dialogue de vérification"""
-        dialog = ui.dialog().props('persistent')
-        self.verification_dialog_instance = dialog
-        
-        with dialog, ui.card().classes('w-96 p-6'):
-            ui.label('🔐 Vérification').classes('text-2xl font-bold mb-4')
-            
-            with ui.column().classes('w-full gap-4'):
-                ui.label(f'Compte: {self.temp_phone}').classes('text-gray-600')
-                
-                ui.label('Code de vérification').classes('font-medium')
-                code_input = ui.input(placeholder='12345').classes('w-full')
-                
-                ui.label('Mot de passe 2FA (si activé)').classes('font-medium')
-                password_input = ui.input(placeholder='Laissez vide si pas de 2FA', password=True, password_toggle_button=True).classes('w-full')
-                
-                with ui.card().classes('bg-yellow-50 p-3'):
-                    ui.label('⚠️ Le mot de passe 2FA n\'est requis que si vous l\'avez activé sur Telegram').classes('text-sm text-yellow-800')
-                
-                async def verify():
-                    code = code_input.value.strip()
-                    password = password_input.value.strip() if password_input.value else None
-                    
-                    if not code:
-                        ui.notify('Veuillez entrer le code de vérification', type='warning')
-                        return
-                    
-                    try:
-                        ui.notify('Vérification en cours...', type='info')
-                        
-                        success, error = await self.telegram_manager.verify_account(self.temp_session_id, code, password)
-                        
-                        if success:
-                            logger.info(f"Vérification réussie pour {self.temp_phone}")
-                            dialog.close()
-                            ui.notify('✅ Compte ajouté avec succès !', type='positive')
-                            self.temp_phone = None
-                            self.temp_session_id = None
-                            # Rafraîchir après un court délai pour s'assurer que tout est à jour
-                            ui.timer(0.2, lambda: self.show_page('comptes'), once=True)
-                        else:
-                            ui.notify(f'❌ {error}', type='negative')
-                    
-                    except Exception as e:
-                        logger.error(f"Erreur vérification: {e}")
-                        ui.notify(f'Erreur: {e}', type='negative')
-                
-                with ui.row().classes('w-full justify-end gap-2 mt-4'):
-                    ui.button('Annuler', on_click=dialog.close).props('flat')
-                    ui.button('Vérifier', on_click=verify).props('color=primary')
         
         dialog.open()
     
@@ -347,8 +208,9 @@ class AutoTeleApp:
                                     ui.notify('✅ Compte reconnecté avec succès !', type='positive')
                                     self.temp_phone = None
                                     self.temp_session_id = None
-                                    # Rafraîchir après un court délai
-                                    ui.timer(0.2, lambda: self.show_page('comptes'), once=True)
+                                    # Rafraîchir la page
+                                    if self.app:
+                                        ui.timer(0.2, lambda: self.app.show_page('comptes'), once=True)
                                 else:
                                     ui.notify(f'❌ {error}', type='negative')
                             
@@ -383,8 +245,9 @@ class AutoTeleApp:
                     await self.telegram_manager.remove_account(session_id)
                     dialog.close()
                     ui.notify('✅ Compte supprimé', type='positive')
-                    # Rafraîchir après un court délai
-                    ui.timer(0.2, lambda: self.show_page('comptes'), once=True)
+                    # Rafraîchir la page
+                    if self.app:
+                        ui.timer(0.2, lambda: self.app.show_page('comptes'), once=True)
                 except Exception as e:
                     ui.notify(f'Erreur: {e}', type='negative')
             
@@ -394,114 +257,110 @@ class AutoTeleApp:
         
         dialog.open()
     
-    async def account_settings_dialog(self, account):
-        """Dialogue des paramètres du compte"""
-        from core.session_manager import SessionManager
-        session_manager = SessionManager()
+    def open_account_settings(self, account):
+        """Ouvre le dialogue de paramètres d'un compte"""
         session_id = account.get('session_id')
+        account_name = account.get('account_name', 'Sans nom')
         
-        # Charger les paramètres actuels
+        # Récupérer les paramètres actuels
+        session_manager = self.telegram_manager.session_manager
         settings = session_manager.get_account_settings(session_id)
         
         with ui.dialog() as dialog, ui.card().classes('w-[600px] p-6'):
-            ui.label('⚙️ Paramètres du compte').classes('text-2xl font-bold mb-4')
-            ui.label(f"{account.get('account_name')} ({account.get('phone')})").classes('text-gray-600 mb-4')
+            ui.label(f'⚙️ Paramètres de {account_name}').classes('text-2xl font-bold mb-4')
             
-            with ui.column().classes('w-full gap-4'):
+            with ui.column().classes('w-full gap-3'):
                 # Nom du compte
                 ui.label('Nom du compte').classes('font-medium')
-                name_input = ui.input(value=account.get('account_name', '')).classes('w-full')
+                account_name_input = ui.input(
+                    placeholder='Ex: Mon Compte Pro',
+                    value=account_name
+                ).classes('w-full')
                 
-                # Message par défaut
-                ui.label('Message par défaut').classes('font-medium')
-                message_input = ui.textarea(value=settings.get('default_message', '')).classes('w-full').props('rows=4')
+                ui.separator()
+                
+                # Message prédéfini
+                ui.label('Message prédéfini').classes('font-medium')
+                message_input = ui.textarea(
+                    placeholder='Entrez votre message prédéfini...',
+                    value=settings.get('default_message', '')
+                ).classes('w-full').props('rows=3')
+                
+                ui.separator()
                 
                 # Horaires prédéfinis
                 ui.label('Horaires prédéfinis').classes('font-medium')
                 
-                # Liste des horaires (mutable)
-                schedules_list = settings.get('default_schedules', []).copy()
+                # Liste des horaires existants
+                schedules_list = settings.get('default_schedules', [])
+                schedules_container = ui.column().classes('w-full gap-1 mt-1')
                 
-                # Container pour la liste
-                schedules_container = ui.column().classes('w-full gap-2')
-                
-                def render_schedules():
-                    """Affiche la liste des horaires"""
+                def update_schedules_display():
+                    """Met à jour l'affichage des horaires"""
                     schedules_container.clear()
                     with schedules_container:
                         if schedules_list:
-                            for schedule in sorted(schedules_list):
-                                with ui.card().classes('w-full p-2 bg-gray-50'):
+                            for i, time in enumerate(schedules_list):
+                                with ui.card().classes('w-full p-2 bg-blue-50'):
                                     with ui.row().classes('w-full items-center gap-2'):
-                                        ui.label(f'🕐 {schedule}').classes('flex-1')
+                                        ui.label(f'🕐 {time}').classes('flex-1 font-medium')
                                         
-                                        def make_delete_handler(s):
-                                            def delete():
-                                                schedules_list.remove(s)
-                                                render_schedules()
-                                            return delete
+                                        def make_remove_handler(idx):
+                                            def remove():
+                                                schedules_list.pop(idx)
+                                                update_schedules_display()
+                                            return remove
                                         
-                                        ui.button('🗑️', on_click=make_delete_handler(schedule)).props('flat dense color=red size=sm')
+                                        ui.button('🗑️', on_click=make_remove_handler(i)).props('flat dense color=red size=sm')
                         else:
-                            ui.label('Aucun horaire prédéfini').classes('text-gray-500 text-sm')
+                            ui.label('Aucun horaire défini').classes('text-gray-500 text-sm italic')
+                
+                update_schedules_display()
                 
                 # Ajouter un horaire
-                with ui.row().classes('w-full gap-2 items-end'):
-                    with ui.column().classes('flex-1'):
-                        ui.label('Ajouter un horaire (HH:MM)').classes('text-sm text-gray-600')
-                        time_input = ui.input(placeholder='09:00').classes('w-full')
+                with ui.row().classes('w-full gap-2 mt-2'):
+                    time_input = ui.input(placeholder='HH:MM (ex: 09:00)').classes('flex-1')
                     
-                    def add_time():
+                    def add_schedule():
                         time_str = time_input.value.strip()
-                        if not time_str:
-                            ui.notify('Veuillez entrer une heure', type='warning')
-                            return
-                        
-                        # Valider le format HH:MM
-                        if ':' not in time_str or len(time_str.split(':')) != 2:
-                            ui.notify('Format invalide (utilisez HH:MM)', type='warning')
-                            return
-                        
-                        try:
-                            h, m = time_str.split(':')
-                            h, m = int(h), int(m)
-                            if not (0 <= h <= 23) or not (0 <= m <= 59):
-                                raise ValueError()
-                            
-                            formatted = f'{h:02d}:{m:02d}'
-                            
-                            if formatted in schedules_list:
-                                ui.notify('Cet horaire existe déjà', type='warning')
-                                return
-                            
-                            schedules_list.append(formatted)
-                            schedules_list.sort()
-                            time_input.value = ''
-                            render_schedules()
-                            ui.notify(f'✅ {formatted} ajouté', type='positive')
-                            
-                        except:
-                            ui.notify('Heure invalide (ex: 09:00)', type='warning')
+                        if time_str:
+                            # Valider le format HH:MM
+                            try:
+                                parts = time_str.split(':')
+                                if len(parts) == 2:
+                                    hour = int(parts[0])
+                                    minute = int(parts[1])
+                                    if 0 <= hour <= 23 and 0 <= minute <= 59:
+                                        formatted = f"{hour:02d}:{minute:02d}"
+                                        if formatted not in schedules_list:
+                                            schedules_list.append(formatted)
+                                            schedules_list.sort()
+                                            time_input.value = ''
+                                            update_schedules_display()
+                                        else:
+                                            ui.notify('Horaire déjà présent', type='warning')
+                                    else:
+                                        ui.notify('Heure ou minute invalide', type='warning')
+                                else:
+                                    ui.notify('Format invalide (utilisez HH:MM)', type='warning')
+                            except ValueError:
+                                ui.notify('Format invalide (utilisez HH:MM)', type='warning')
                     
-                    ui.button('➕ Ajouter', on_click=add_time).props('color=primary')
+                    ui.button('➕ Ajouter', on_click=add_schedule).props('color=green')
                 
-                # Afficher la liste initiale
-                render_schedules()
+                ui.separator()
                 
-                with ui.card().classes('bg-blue-50 p-3 mt-2'):
-                    ui.label('💡 Les horaires prédéfinis seront automatiquement proposés lors de la création de messages').classes('text-sm text-blue-800')
-                
-                async def save():
+                # Boutons d'action
+                async def save_settings():
                     try:
-                        # Sauvegarder le nom
-                        new_name = name_input.value.strip()
-                        if new_name:
-                            session_manager.update_account_name(session_id, new_name)
-                        
-                        # Sauvegarder les paramètres
+                        new_name = account_name_input.value.strip()
                         new_message = message_input.value.strip()
                         
-                        # Utiliser la liste des horaires
+                        # Mettre à jour le nom du compte
+                        if new_name and new_name != account_name:
+                            self.telegram_manager.update_account_name(session_id, new_name)
+                        
+                        # Mettre à jour les paramètres
                         session_manager.update_account_settings(
                             session_id,
                             default_message=new_message,
@@ -509,65 +368,16 @@ class AutoTeleApp:
                         )
                         
                         dialog.close()
-                        ui.notify('✅ Paramètres sauvegardés !', type='positive')
+                        ui.notify('✅ Paramètres sauvegardés', type='positive')
                         # Rafraîchir la page
-                        ui.timer(0.2, lambda: self.show_page('comptes'), once=True)
-                        
+                        if self.app:
+                            ui.timer(0.2, lambda: self.app.show_page('comptes'), once=True)
                     except Exception as e:
                         logger.error(f"Erreur sauvegarde paramètres: {e}")
                         ui.notify(f'Erreur: {e}', type='negative')
                 
                 with ui.row().classes('w-full justify-end gap-2 mt-4'):
                     ui.button('Annuler', on_click=dialog.close).props('flat')
-                    ui.button('💾 Sauvegarder', on_click=save).props('color=primary')
+                    ui.button('💾 Sauvegarder', on_click=save_settings).props('color=primary')
         
         dialog.open()
-    
-    def page_envoi(self):
-        """Page envois en cours"""
-        with ui.column().classes('w-full gap-4 p-6'):
-            ui.label('📤 Envoi en cours').classes('text-3xl font-bold')
-            ui.separator()
-            
-            with ui.card().classes('w-full p-6'):
-                ui.label('Messages en cours d\'envoi').classes('text-lg')
-                ui.label('Aucun envoi en cours pour le moment.').classes('text-gray-600')
-    
-
-
-def main():
-    """Point d'entrée principal de l'application"""
-    
-    app = AutoTeleApp()
-    
-    @ui.page('/')
-    def index():
-        """Page d'accueil avec menu latéral"""
-        with ui.row().classes('w-full h-screen').style('margin: 0; padding: 0;'):
-            # Menu latéral
-            app.create_sidebar()
-            
-            # Zone de contenu
-            app.content_area = ui.column().classes('flex-1 overflow-auto')
-            
-            # Charger la page par défaut
-            app.show_page('comptes')
-            
-            # Charger les sessions existantes après que l'UI soit prête
-            ui.timer(0.1, lambda: asyncio.create_task(app.load_existing_sessions()), once=True)
-    
-    # Lancer l'application en mode desktop
-    ui.run(
-        title='AutoTele - Planificateur Telegram',
-        host='127.0.0.1',
-        port=8080,
-        reload=False,
-        show=False,
-        native=True,
-        window_size=(1400, 900),
-        dark=False,
-    )
-
-
-if __name__ == '__main__':
-    main()
