@@ -118,7 +118,27 @@ GLOBAL_CSS: Final[str] = '''
     .content-scrollable {
         overflow-y: auto !important;
         overflow-x: hidden !important;
-        height: 100%;
+        height: 100vh !important;
+        max-height: 100vh !important;
+    }
+    
+    /* Appliquer la scrollbar personnalisée à la zone de contenu */
+    .content-scrollable::-webkit-scrollbar {
+        width: 8px;
+    }
+    
+    .content-scrollable::-webkit-scrollbar-track {
+        background: #f1f5f9;
+        border-radius: 4px;
+    }
+    
+    .content-scrollable::-webkit-scrollbar-thumb {
+        background: var(--secondary);
+        border-radius: 4px;
+    }
+    
+    .content-scrollable::-webkit-scrollbar-thumb:hover {
+        background: var(--primary);
     }
     
     /* Masquer les icônes de notifications */
@@ -156,6 +176,55 @@ GLOBAL_CSS: Final[str] = '''
     
     .file-upload-area:active {
         transform: translateY(0) !important;
+    }
+    
+    /* Animation de l'icône d'upload */
+    .file-upload-icon {
+        animation: float 3s ease-in-out infinite;
+    }
+    
+    @keyframes float {
+        0%, 100% {
+            transform: translateY(0px);
+        }
+        50% {
+            transform: translateY(-10px);
+        }
+    }
+    
+    /* Hover sur la zone de fichier complète */
+    .card-modern:has(.file-upload-icon):hover {
+        border-color: var(--primary) !important;
+        box-shadow: 0 8px 25px rgba(30, 58, 138, 0.15) !important;
+        transform: translateY(-2px);
+    }
+    
+    .card-modern:has(.file-upload-icon):hover .file-upload-icon {
+        transform: scale(1.1) translateY(-10px) !important;
+        box-shadow: 0 12px 30px rgba(30, 58, 138, 0.4) !important;
+    }
+    
+    /* Animation de la carte de fichier sélectionné */
+    @keyframes slideInRight {
+        from {
+            opacity: 0;
+            transform: translateX(-20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+    
+    .card-modern:has(img[alt="Aperçu"]) {
+        animation: slideInRight 0.4s ease-out;
+    }
+    
+    /* Effet de survol sur les badges de type de fichier */
+    .card-modern:has(.file-upload-icon) .q-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(30, 58, 138, 0.15);
+        transition: all 0.2s ease;
     }
     
     /* Barre de progression */

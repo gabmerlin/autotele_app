@@ -8,6 +8,7 @@ from core.telegram.manager import TelegramManager
 from core.session_manager import SessionManager
 from ui.components.dialogs import VerificationDialog, ConfirmDialog
 from utils.logger import get_logger
+from utils.notification_manager import notify
 from utils.constants import ICON_ACCOUNT, ICON_SUCCESS, MSG_NO_ACCOUNT
 from utils.validators import validate_time_format, format_time
 
@@ -211,20 +212,20 @@ class AccountsPage:
                         
                         is_valid, error_msg = validate_time_format(time_str)
                         if not is_valid:
-                            ui.notify(error_msg, type='warning')
+                            notify(error_msg, type='warning')
                             return
                         
                         formatted = format_time(time_str)
                         
                         if formatted in schedules_list:
-                            ui.notify('Cet horaire existe déjà', type='warning')
+                            notify('Cet horaire existe déjà', type='warning')
                             return
                         
                         schedules_list.append(formatted)
                         schedules_list.sort()
                         time_input.value = ''
                         render_schedules()
-                        ui.notify(f'{ICON_SUCCESS} {formatted} ajouté', type='positive')
+                        notify(f'{ICON_SUCCESS} {formatted} ajouté', type='positive')
                     
                     ui.button('➕ Ajouter', on_click=add_time).props('color=primary')
                 
@@ -252,12 +253,12 @@ class AccountsPage:
                         )
                         
                         dialog.close()
-                        ui.notify('✅ Paramètres sauvegardés !', type='positive')
+                        notify('✅ Paramètres sauvegardés !', type='positive')
                         ui.timer(0.2, lambda: self.app.show_page('comptes'), once=True)
                         
                     except Exception as e:
                         logger.error(f"Erreur sauvegarde paramètres: {e}")
-                        ui.notify(f'Erreur: {e}', type='negative')
+                        notify(f'Erreur: {e}', type='negative')
                 
                 with ui.row().classes('w-full justify-end gap-2 mt-4'):
                     ui.button('Annuler', on_click=dialog.close).props('flat').style(

@@ -28,10 +28,32 @@ class AutoTeleApp:
         from ui.pages.accounts_page import AccountsPage
         from ui.pages.new_message_page import NewMessagePage
         from ui.pages.scheduled_messages_page import ScheduledMessagesPage
+        from utils.notification_manager import notify
         
         self.accounts_page = AccountsPage(self.telegram_manager, self)
         self.new_message_page = NewMessagePage(self.telegram_manager)
         self.scheduled_messages_page = ScheduledMessagesPage(self.telegram_manager)
+    
+    def _create_verification_callback(self, success_message: str):
+        """
+        Crée un callback de vérification réutilisable.
+        
+        Args:
+            success_message: Message à afficher en cas de succès
+            
+        Returns:
+            Fonction callback async
+        """
+        async def on_verify(sid: str, code: str, password: Optional[str]) -> None:
+            """Callback de vérification."""
+            success, error = await self.telegram_manager.verify_account(sid, code, password)
+            if success:
+                notify(success_message, type='positive')
+                ui.timer(0.2, lambda: self.show_page('comptes'), once=True)
+            else:
+                raise Exception(error)
+        
+        return on_verify
     
     async def initialize(self) -> None:
         """Initialise l'application (charge les sessions existantes)."""
@@ -127,43 +149,36 @@ class AutoTeleApp:
                     # Validations
                     is_valid, error_msg = validate_account_name(name)
                     if not is_valid:
-                        ui.notify(error_msg, type='warning')
+                        notify(error_msg, type='warning')
                         return
                     
                     is_valid, error_msg = validate_phone_number(phone)
                     if not is_valid:
-                        ui.notify(error_msg, type='warning')
+                        notify(error_msg, type='warning')
                         return
                     
                     try:
-                        ui.notify('Envoi du code de vérification...', type='info')
+                        notify('Envoi du code de vérification...', type='info')
                         
                         success, message, session_id = await self.telegram_manager.add_account(phone, name)
                         
                         if success:
-                            ui.notify('Code envoyé ! Vérifiez votre Telegram', type='positive')
+                            notify('Code envoyé ! Vérifiez votre Telegram', type='positive')
                             dialog.close()
                             
                             # Afficher le dialogue de vérification
-                            async def on_verify(sid: str, code: str, password: Optional[str]) -> None:
-                                """Callback de vérification."""
-                                success, error = await self.telegram_manager.verify_account(sid, code, password)
-                                if success:
-                                    ui.notify('🎉 Compte ajouté avec succès !', type='positive')
-                                    ui.timer(0.2, lambda: self.show_page('comptes'), once=True)
-                                else:
-                                    raise Exception(error)
+                            on_verify = self._create_verification_callback('🎉 Compte ajouté avec succès !')
                             
                             verification_dialog = VerificationDialog(
                                 name, phone, session_id, on_verify
                             )
                             verification_dialog.show()
                         else:
-                            ui.notify(f'Erreur: {message}', type='negative')
+                            notify(f'Erreur: {message}', type='negative')
                     
                     except Exception as e:
                         logger.error(f"Erreur ajout compte: {e}")
-                        ui.notify(f'Erreur: {e}', type='negative')
+                        notify(f'Erreur: {e}', type='negative')
                 
                 with ui.row().classes('w-full justify-end gap-2 mt-4'):
                     ui.button('Annuler', on_click=dialog.close).props('flat').style(
@@ -187,7 +202,7 @@ class AutoTeleApp:
         async def on_confirm() -> None:
             """Confirme la suppression."""
             await self.telegram_manager.remove_account(session_id)
-            ui.notify('✅ Compte supprimé', type='positive')
+            notify('✅ Compte supprimé', type='positive')
             ui.timer(0.2, lambda: self.show_page('comptes'), once=True)
         
         confirm_dialog = ConfirmDialog(
@@ -211,32 +226,25 @@ class AutoTeleApp:
         account_name = account.get('account_name')
         
         try:
-            ui.notify('Envoi du nouveau code de vérification...', type='info')
+            notify('Envoi du nouveau code de vérification...', type='info')
             success, message = await self.telegram_manager.resend_code(session_id)
             
             if success:
-                ui.notify('Code envoyé ! Vérifiez votre Telegram', type='positive')
+                notify('Code envoyé ! Vérifiez votre Telegram', type='positive')
                 
                 # Afficher le dialogue de vérification
-                async def on_verify(sid: str, code: str, password: Optional[str]) -> None:
-                    """Callback de vérification."""
-                    success, error = await self.telegram_manager.verify_account(sid, code, password)
-                    if success:
-                        ui.notify('✅ Compte reconnecté avec succès !', type='positive')
-                        ui.timer(0.2, lambda: self.show_page('comptes'), once=True)
-                    else:
-                        raise Exception(error)
+                on_verify = self._create_verification_callback('✅ Compte reconnecté avec succès !')
                 
                 verification_dialog = VerificationDialog(
                     account_name, phone, session_id, on_verify
                 )
                 verification_dialog.show()
             else:
-                ui.notify(f'Erreur: {message}', type='negative')
+                notify(f'Erreur: {message}', type='negative')
         
         except Exception as e:
             logger.error(f"Erreur reconnexion: {e}")
-            ui.notify(f'Erreur: {e}', type='negative')
+            notify(f'Erreur: {e}', type='negative')
     
     def setup_ui(self) -> None:
         """Configure l'interface utilisateur principale."""

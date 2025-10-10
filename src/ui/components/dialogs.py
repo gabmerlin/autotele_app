@@ -4,6 +4,7 @@ Composants de dialogues réutilisables.
 from typing import Callable, Optional
 from nicegui import ui
 from utils.logger import get_logger
+from utils.notification_manager import notify
 from utils.constants import ICON_WARNING, ICON_SUCCESS, ICON_ERROR
 from utils.validators import validate_verification_code
 
@@ -74,16 +75,16 @@ class VerificationDialog:
                     # Validation
                     is_valid, error_msg = validate_verification_code(code)
                     if not is_valid:
-                        ui.notify(error_msg, type='warning')
+                        notify(error_msg, type='warning')
                         return
                     
                     try:
-                        ui.notify('Vérification en cours...', type='info')
+                        notify('Vérification en cours...', type='info')
                         await self.on_verify(self.session_id, code, password)
                         self.close()
                     except Exception as e:
                         logger.error(f"Erreur vérification: {e}")
-                        ui.notify(f'{ICON_ERROR} {e}', type='negative')
+                        notify(f'{ICON_ERROR} {e}', type='negative')
                 
                 def cancel() -> None:
                     """Annule la vérification."""
@@ -161,7 +162,7 @@ class ConfirmDialog:
                     self.close()
                 except Exception as e:
                     logger.error(f"Erreur confirmation: {e}")
-                    ui.notify(f'{ICON_ERROR} {e}', type='negative')
+                    notify(f'{ICON_ERROR} {e}', type='negative')
             
             def cancel() -> None:
                 """Annule l'action."""

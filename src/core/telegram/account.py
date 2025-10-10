@@ -12,7 +12,7 @@ from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, F
 
 from core.session_manager import SessionManager
 from utils.logger import get_logger
-from utils.constants import TELEGRAM_MIN_DELAY_PER_CHAT
+from utils.constants import TELEGRAM_MIN_DELAY_PER_CHAT, TELEGRAM_MAX_SCHEDULED_MESSAGES_FETCH
 
 logger = get_logger()
 
@@ -113,8 +113,8 @@ class TelegramAccount:
                     await self.client.connect()
                     await self.client.send_code_request(self.phone)
                     return True
-            except:
-                pass
+            except Exception as reconnect_error:
+                logger.error(f"Erreur lors de la reconnexion: {reconnect_error}")
             return False
     
     async def sign_in(self, code: str, password: Optional[str] = None) -> Tuple[bool, str]:
@@ -259,7 +259,21 @@ class TelegramAccount:
             else:
                 # Envoi programmé
                 if file_path and Path(file_path).exists():
-                    await self.client.send_file(chat_id, file_path, caption=message, schedule=schedule_date)
+                    try:
+                        # Pour les messages programmés avec fichiers, utiliser send_message avec document
+                        from telethon.tl.types import InputMediaDocument
+                        file_input = await self.client.upload_file(file_path)
+                        media = InputMediaDocument(file_input)
+                        await self.client.send_message(
+                            chat_id, 
+                            message, 
+                            file=media,
+                            schedule=schedule_date
+                        )
+                    except Exception as file_error:
+                        # Si l'envoi avec fichier échoue, essayer sans fichier
+                        logger.warning(f"Échec envoi fichier programmé, envoi sans fichier: {file_error}")
+                        await self.client.send_message(chat_id, message, schedule=schedule_date)
                 else:
                     await self.client.send_message(chat_id, message, schedule=schedule_date)
             
@@ -336,8 +350,9 @@ class TelegramAccount:
                                     "media_type": type(msg.media).__name__ if hasattr(msg, 'media') and msg.media else None
                                 }
                                 all_scheduled.append(scheduled_info)
-                    except:
+                    except Exception as api_error:
                         # Fallback : iter_messages
+                        logger.debug(f"API bas niveau échouée pour {chat_title}, utilisation de iter_messages: {api_error}")
                         async for msg in self.client.iter_messages(chat_id, scheduled=True):
                             scheduled_info = {
                                 "message_id": msg.id,
@@ -397,7 +412,7 @@ class TelegramAccount:
                 logger.info(f"🗑️ {len(message_ids)} message(s) supprimé(s)")
             else:
                 # Supprimer tous les messages
-                scheduled_messages = await self.client.get_messages(chat_id, scheduled=True, limit=100)
+                scheduled_messages = await self.client.get_messages(chat_id, scheduled=True, limit=TELEGRAM_MAX_SCHEDULED_MESSAGES_FETCH)
                 if scheduled_messages:
                     msg_ids = [msg.id for msg in scheduled_messages]
                     await self.client(DeleteScheduledMessagesRequest(peer=chat_id, id=msg_ids))

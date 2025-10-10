@@ -8,6 +8,7 @@ from nicegui import ui
 from core.telegram.manager import TelegramManager
 from ui.components.dialogs import ConfirmDialog
 from utils.logger import get_logger
+from utils.notification_manager import notify
 from utils.constants import ICON_SCHEDULED, ICON_REFRESH, MSG_NO_CONNECTED_ACCOUNT
 
 logger = get_logger()
@@ -71,7 +72,7 @@ class ScheduledMessagesPage:
                         def make_select(sid: str, name: str):
                             async def select() -> None:
                                 self.selected_account = sid
-                                ui.notify(f'Compte sélectionné: {name}', type='info')
+                                notify(f'Compte sélectionné: {name}', type='info')
                                 await self.load_scheduled_messages()
                             return select
                         
@@ -139,7 +140,7 @@ class ScheduledMessagesPage:
                 # Boutons d'action
                 with ui.row().classes('w-full gap-3 mb-4'):
                     async def refresh() -> None:
-                        ui.notify(f'{ICON_REFRESH} Rechargement...', type='info')
+                        notify(f'{ICON_REFRESH} Rechargement...', type='info')
                         await self.load_scheduled_messages()
                     
                     ui.button(f'{ICON_REFRESH} Rafraîchir', on_click=refresh).props('outline').style(
@@ -200,20 +201,20 @@ class ScheduledMessagesPage:
                     def delete_all() -> None:
                         async def on_confirm() -> None:
                             try:
-                                ui.notify('Suppression en cours...', type='info')
+                                notify('Suppression en cours...', type='info')
                                 success, error = await account.delete_scheduled_messages(cid, None)
                                 if success:
-                                    ui.notify('✅ Messages supprimés !', type='positive')
+                                    notify('✅ Messages supprimés !', type='positive')
                                     self.current_messages = [
                                         msg for msg in self.current_messages
                                         if msg['chat_id'] != cid
                                     ]
                                     self.display_messages()
                                 else:
-                                    ui.notify(f'❌ Erreur: {error}', type='negative')
+                                    notify(f'❌ Erreur: {error}', type='negative')
                             except Exception as e:
                                 logger.error(f"Erreur suppression: {e}")
-                                ui.notify(f'❌ Erreur: {e}', type='negative')
+                                notify(f'❌ Erreur: {e}', type='negative')
                         
                         confirm = ConfirmDialog(
                             title=f'⚠️ Supprimer tous les messages de "{title}" ?',
@@ -261,20 +262,20 @@ class ScheduledMessagesPage:
                 def make_delete(cid: int, mid: int):
                     async def delete() -> None:
                         try:
-                            ui.notify('Suppression...', type='info')
+                            notify('Suppression...', type='info')
                             success, error = await account.delete_scheduled_messages(cid, [mid])
                             if success:
-                                ui.notify('✅ Message supprimé', type='positive')
+                                notify('✅ Message supprimé', type='positive')
                                 self.current_messages = [
                                     m for m in self.current_messages
                                     if not (m['chat_id'] == cid and m['message_id'] == mid)
                                 ]
                                 self.display_messages()
                             else:
-                                ui.notify(f'❌ Erreur: {error}', type='negative')
+                                notify(f'❌ Erreur: {error}', type='negative')
                         except Exception as e:
                             logger.error(f"Erreur suppression message: {e}")
-                            ui.notify(f'❌ Erreur: {e}', type='negative')
+                            notify(f'❌ Erreur: {e}', type='negative')
                     return delete
                 
                 ui.button('✕', on_click=make_delete(chat_id, msg['message_id'])).props(
@@ -289,7 +290,7 @@ class ScheduledMessagesPage:
                 if not account:
                     return
                 
-                ui.notify('🗑️ Suppression de tous les messages...', type='warning')
+                notify('🗑️ Suppression de tous les messages...', type='warning')
                 
                 # Grouper par chat
                 chats: Dict[int, List[int]] = {}
@@ -305,7 +306,7 @@ class ScheduledMessagesPage:
                     if success:
                         deleted_count += len(msg_ids)
                 
-                ui.notify(f'✅ {deleted_count} message(s) supprimé(s) !', type='positive')
+                notify(f'✅ {deleted_count} message(s) supprimé(s) !', type='positive')
                 
                 # Vider le cache
                 self.current_messages = []
@@ -313,7 +314,7 @@ class ScheduledMessagesPage:
                 
             except Exception as e:
                 logger.error(f"Erreur suppression totale: {e}")
-                ui.notify(f'❌ Erreur: {e}', type='negative')
+                notify(f'❌ Erreur: {e}', type='negative')
         
         confirm = ConfirmDialog(
             title='⚠ ATTENTION',

@@ -65,6 +65,7 @@ class SessionManager:
         self.logger.info(f"Session créée: {session_id}")
         return session_id
     
+    
     def get_session_info(self, session_id: str) -> Optional[Dict]:
         """Récupère les informations d'une session"""
         return self.sessions_index.get(session_id)

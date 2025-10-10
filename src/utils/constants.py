@@ -12,6 +12,11 @@ TELEGRAM_MAX_MESSAGE_LENGTH: Final[int] = 4096
 TELEGRAM_RATE_LIMIT_PER_SECOND: Final[int] = 25
 TELEGRAM_MIN_DELAY_BETWEEN_MESSAGES: Final[float] = 0.04  # 25 msg/sec
 TELEGRAM_MIN_DELAY_PER_CHAT: Final[float] = 1.0  # 1 msg/sec/chat
+TELEGRAM_MAX_SCHEDULED_MESSAGES_FETCH: Final[int] = 100  # Limite de récupération des messages
+
+# Limites de fichiers
+MAX_FILE_SIZE_MB: Final[float] = 2.5
+MAX_FILE_SIZE_BYTES: Final[int] = int(MAX_FILE_SIZE_MB * 1024 * 1024)
 
 # Configuration UI
 DEFAULT_WINDOW_SIZE: Final[tuple[int, int]] = (1200, 800)
@@ -58,17 +63,41 @@ MONTHS_LONG: Final[list[str]] = [
 
 # Types de fichiers
 FILE_ICONS: Final[dict[str, str]] = {
+    # Images
     '.jpg': '🖼️',
     '.jpeg': '🖼️',
     '.png': '🖼️',
     '.gif': '🖼️',
+    '.webp': '🖼️',
+    '.bmp': '🖼️',
+    '.svg': '🖼️',
+    # Documents
     '.pdf': '📄',
     '.doc': '📝',
     '.docx': '📝',
+    '.txt': '📝',
+    '.odt': '📝',
+    '.rtf': '📝',
+    # Vidéos
     '.mp4': '🎥',
     '.avi': '🎥',
+    '.mov': '🎥',
+    '.mkv': '🎥',
+    '.wmv': '🎥',
+    '.flv': '🎥',
+    # Audio
     '.mp3': '🎵',
+    '.wav': '🎵',
+    '.ogg': '🎵',
+    '.m4a': '🎵',
+    '.flac': '🎵',
+    # Archives
     '.zip': '📦',
+    '.rar': '📦',
+    '.7z': '📦',
+    '.tar': '📦',
+    '.gz': '📦',
+    # Défaut
     'default': '📎'
 }
 

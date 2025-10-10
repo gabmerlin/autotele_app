@@ -1,8 +1,8 @@
-nicegui==1.4.29
+nicegui>=1.4.35
 telethon==1.36.0
 cryptography==42.0.5
 requests==2.31.0
 python-dateutil==2.9.0
-aiofiles==23.2.1
+aiofiles>=24.1.0
 Pillow
 pywin32

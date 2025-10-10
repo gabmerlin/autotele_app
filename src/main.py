@@ -13,7 +13,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 from nicegui import ui
 from ui.app import AutoTeleApp
 from utils.logger import get_logger
+from utils.notification_manager import reset_notifications
 from utils.constants import APP_NAME, DEFAULT_HOST, DEFAULT_PORT, DEFAULT_WINDOW_SIZE
+from utils.paths import get_temp_dir
 
 logger = get_logger()
 
@@ -43,8 +45,38 @@ def maximize_window_on_startup() -> None:
         logger.error(f"Erreur maximisation: {e}")
 
 
+def cleanup_temp_files() -> None:
+    """Nettoie les fichiers temporaires au démarrage."""
+    try:
+        temp_dir = get_temp_dir()
+        if temp_dir.exists():
+            for file in temp_dir.iterdir():
+                if file.is_file():
+                    try:
+                        file.unlink()
+                        logger.info(f"Fichier temporaire supprimé: {file.name}")
+                    except Exception as e:
+                        logger.warning(f"Impossible de supprimer {file.name}: {e}")
+    except Exception as e:
+        logger.error(f"Erreur nettoyage fichiers temporaires: {e}")
+
+
 def main() -> None:
     """Point d'entrée principal de l'application."""
+    
+    # Configurer le dossier temp pour servir les fichiers uploadés
+    temp_dir = get_temp_dir()
+    
+    # Nettoyer les fichiers temporaires du démarrage précédent
+    cleanup_temp_files()
+    
+    # Réinitialiser le compteur de notifications
+    reset_notifications()
+    
+    # Ajouter le dossier temp comme dossier de fichiers statiques
+    from nicegui import app as nicegui_app
+    nicegui_app.add_static_files('/temp', str(temp_dir))
+    logger.info(f"Dossier temp configuré : {temp_dir}")
     
     app = AutoTeleApp()
     
