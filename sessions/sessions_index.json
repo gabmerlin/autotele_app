@@ -6,12 +6,62 @@
     "api_hash": "64342ccdb7588fe8648219265ff5f846",
     "account_name": "Gab",
     "created_at": "2025-10-09T16:23:25.371796",
-    "last_used": "2025-10-09T17:04:01.774458",
+    "last_used": "2025-10-10T15:22:16.457367",
     "status": "active",
     "default_message": "test",
     "default_schedules": [
       "07:00",
       "13:00"
     ]
+  },
+  "session_393518914754": {
+    "session_id": "session_393518914754",
+    "phone": "+393518914754",
+    "api_id": 21211112,
+    "api_hash": "64342ccdb7588fe8648219265ff5f846",
+    "account_name": "Lilou",
+    "created_at": "2025-10-09T18:53:57.983312",
+    "last_used": "2025-10-10T15:22:16.617286",
+    "status": "active"
+  },
+  "session_393515732501": {
+    "session_id": "session_393515732501",
+    "phone": "+393515732501",
+    "api_id": 21211112,
+    "api_hash": "64342ccdb7588fe8648219265ff5f846",
+    "account_name": "Lénaya",
+    "created_at": "2025-10-09T18:56:09.951417",
+    "last_used": "2025-10-10T15:22:16.804497",
+    "status": "active"
+  },
+  "session_33 7 44 21 25 52": {
+    "session_id": "session_33 7 44 21 25 52",
+    "phone": "+33 7 44 21 25 52",
+    "api_id": 21211112,
+    "api_hash": "64342ccdb7588fe8648219265ff5f846",
+    "account_name": "Ilona",
+    "created_at": "2025-10-09T18:57:57.423651",
+    "last_used": "2025-10-10T15:22:17.101348",
+    "status": "active"
+  },
+  "session_16267186348": {
+    "session_id": "session_16267186348",
+    "phone": "+16267186348",
+    "api_id": 21211112,
+    "api_hash": "64342ccdb7588fe8648219265ff5f846",
+    "account_name": "Ayaaa",
+    "created_at": "2025-10-09T19:30:44.486806",
+    "last_used": "2025-10-10T15:22:17.731179",
+    "status": "active"
+  },
+  "session_33617327754": {
+    "session_id": "session_33617327754",
+    "phone": "+33617327754",
+    "api_id": 21211112,
+    "api_hash": "64342ccdb7588fe8648219265ff5f846",
+    "account_name": "Marie",
+    "created_at": "2025-10-10T11:08:52.133597",
+    "last_used": "2025-10-10T15:22:18.003131",
+    "status": "active"
   }
 }
