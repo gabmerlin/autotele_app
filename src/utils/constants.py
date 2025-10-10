@@ -9,9 +9,9 @@ APP_VERSION: Final[str] = "2.0.0"
 
 # Limites Telegram
 TELEGRAM_MAX_MESSAGE_LENGTH: Final[int] = 4096
-TELEGRAM_RATE_LIMIT_PER_SECOND: Final[int] = 25
-TELEGRAM_MIN_DELAY_BETWEEN_MESSAGES: Final[float] = 0.04  # 25 msg/sec
-TELEGRAM_MIN_DELAY_PER_CHAT: Final[float] = 1.0  # 1 msg/sec/chat
+TELEGRAM_RATE_LIMIT_PER_SECOND: Final[int] = 29
+TELEGRAM_MIN_DELAY_BETWEEN_MESSAGES: Final[float] = 0.0345  # 29 msg/sec (1/29)
+TELEGRAM_MIN_DELAY_PER_CHAT: Final[float] = 2.0  # 1 msg toutes les 2 sec/chat (sécurité)
 TELEGRAM_MAX_SCHEDULED_MESSAGES_FETCH: Final[int] = 100  # Limite de récupération des messages
 
 # Limites de fichiers

@@ -88,19 +88,24 @@ class MessageService:
                     continue
                 
                 try:
-                    # PROTECTION 1: Rate limit par chat (1 msg/sec/chat)
+                    # PROTECTION: Calculer le délai maximum à respecter
+                    wait_time = 0.0
+                    
+                    # Protection 1: Rate limit par chat (2 sec/chat)
                     if group_id in last_send_time:
                         elapsed_chat = asyncio.get_event_loop().time() - last_send_time[group_id]
                         if elapsed_chat < TELEGRAM_MIN_DELAY_PER_CHAT:
-                            wait_chat = TELEGRAM_MIN_DELAY_PER_CHAT - elapsed_chat
-                            await asyncio.sleep(wait_chat)
+                            wait_time = max(wait_time, TELEGRAM_MIN_DELAY_PER_CHAT - elapsed_chat)
                     
-                    # PROTECTION 2: Rate limit global (25 msg/sec = 0.04s entre envois)
+                    # Protection 2: Rate limit global (25 msg/sec = 0.04s entre envois)
                     if last_global_send > 0:
                         elapsed_global = asyncio.get_event_loop().time() - last_global_send
                         if elapsed_global < TELEGRAM_MIN_DELAY_BETWEEN_MESSAGES:
-                            wait_global = TELEGRAM_MIN_DELAY_BETWEEN_MESSAGES - elapsed_global
-                            await asyncio.sleep(wait_global)
+                            wait_time = max(wait_time, TELEGRAM_MIN_DELAY_BETWEEN_MESSAGES - elapsed_global)
+                    
+                    # Attendre si nécessaire (une seule fois, le max des deux)
+                    if wait_time > 0:
+                        await asyncio.sleep(wait_time)
                     
                     # Envoyer le message
                     success, error = await account.schedule_message(
@@ -110,14 +115,14 @@ class MessageService:
                         file_path
                     )
                     
+                    # IMPORTANT: Toujours enregistrer l'heure, même en cas d'échec
+                    # pour éviter les envois trop rapides après une erreur
+                    current_time = asyncio.get_event_loop().time()
+                    last_send_time[group_id] = current_time
+                    last_global_send = current_time
+                    
                     if success:
                         sent += 1
-                        
-                        # Enregistrer l'heure d'envoi
-                        current_time = asyncio.get_event_loop().time()
-                        last_send_time[group_id] = current_time
-                        last_global_send = current_time
-                        
                         if on_progress:
                             on_progress(sent, total, skipped, failed_groups)
                     else:
@@ -128,28 +133,41 @@ class MessageService:
                             skipped += 1
                             logger.warning(f"Groupe {group_id} exclu: {error}")
                         elif MessageService._is_flood_error(error):
-                            # Attendre et réessayer
+                            # Attendre le temps demandé par Telegram
                             wait_time = MessageService._extract_wait_time(error)
-                            logger.warning(f"Flood limit: attente de {wait_time}s...")
+                            logger.warning(f"Flood limit détecté: attente de {wait_time}s...")
                             await asyncio.sleep(wait_time)
                             
-                            # Réessayer
-                            success, _ = await account.schedule_message(
+                            # Mettre à jour les timers pour le délai respecté
+                            current_time = asyncio.get_event_loop().time()
+                            last_send_time[group_id] = current_time
+                            last_global_send = current_time
+                            
+                            # Réessayer UNE SEULE fois
+                            success, retry_error = await account.schedule_message(
                                 group_id,
                                 message,
                                 dt,
                                 file_path
                             )
                             
+                            # Enregistrer à nouveau l'heure après le réessai
+                            current_time = asyncio.get_event_loop().time()
+                            last_send_time[group_id] = current_time
+                            last_global_send = current_time
+                            
                             if success:
                                 sent += 1
-                                current_time = asyncio.get_event_loop().time()
-                                last_send_time[group_id] = current_time
-                                last_global_send = current_time
+                                logger.info(f"✓ Réessai réussi pour groupe {group_id}")
                             else:
                                 # Si ça échoue encore, exclure
                                 failed_groups.add(group_id)
                                 skipped += 1
+                                logger.error(f"Réessai échoué pour groupe {group_id}: {retry_error}")
+                        else:
+                            # Autre erreur : pas de réessai
+                            failed_groups.add(group_id)
+                            skipped += 1
                         
                         if on_progress:
                             on_progress(sent, total, skipped, failed_groups)
