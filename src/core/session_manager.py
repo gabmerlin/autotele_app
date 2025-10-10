@@ -48,6 +48,9 @@ class SessionManager:
         """
         session_id = f"session_{phone.replace('+', '')}"
         
+        # Le premier compte ajouté devient automatiquement le compte maître
+        is_first_account = len(self.sessions_index) == 0
+        
         entry = {
             "session_id": session_id,
             "phone": phone,
@@ -56,13 +59,14 @@ class SessionManager:
             "account_name": account_name or phone,
             "created_at": datetime.now().isoformat(),
             "last_used": datetime.now().isoformat(),
-            "status": "active"
+            "status": "active",
+            "is_master": is_first_account  # Premier compte = maître
         }
         
         self.sessions_index[session_id] = entry
         self._save_index()
         
-        self.logger.info(f"Session créée: {session_id}")
+        self.logger.info(f"Session créée: {session_id} (Maître: {is_first_account})")
         return session_id
     
     
@@ -138,6 +142,56 @@ class SessionManager:
         session = self.sessions_index.get(session_id, {})
         return {
             "default_message": session.get("default_message", ""),
-            "default_schedules": session.get("default_schedules", [])
+            "default_schedules": session.get("default_schedules", []),
+            "is_master": session.get("is_master", False)
         }
+    
+    def get_master_account(self) -> Optional[str]:
+        """Retourne le session_id du compte maître"""
+        for session_id, session in self.sessions_index.items():
+            if session.get("is_master", False):
+                return session_id
+        return None
+    
+    def set_master_account(self, session_id: str) -> bool:
+        """
+        Définit un compte comme compte maître.
+        Enlève automatiquement le statut maître des autres comptes (exclusivité).
+        
+        Args:
+            session_id: ID de la session à définir comme maître
+            
+        Returns:
+            bool: True si réussi, False sinon
+        """
+        if session_id not in self.sessions_index:
+            return False
+        
+        # Retirer le statut maître de tous les comptes
+        for sid in self.sessions_index:
+            self.sessions_index[sid]["is_master"] = False
+        
+        # Définir le nouveau compte maître
+        self.sessions_index[session_id]["is_master"] = True
+        self._save_index()
+        
+        self.logger.info(f"Compte maître défini: {session_id}")
+        return True
+    
+    def is_master_account(self, session_id: str) -> bool:
+        """Vérifie si un compte est le compte maître"""
+        session = self.sessions_index.get(session_id, {})
+        return session.get("is_master", False)
+    
+    def can_unset_master(self, session_id: str) -> bool:
+        """
+        Vérifie si on peut retirer le statut maître d'un compte.
+        Impossible si c'est le seul compte.
+        
+        Returns:
+            bool: True si on peut retirer le statut, False sinon
+        """
+        # Compter le nombre de comptes actifs
+        active_sessions = [s for s in self.sessions_index.values() if s.get("status") == "active"]
+        return len(active_sessions) > 1
 

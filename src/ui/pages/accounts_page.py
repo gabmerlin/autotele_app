@@ -58,7 +58,8 @@ class AccountsPage:
     
     def _render_accounts_grid(self) -> None:
         """Rend la grille des comptes."""
-        accounts = self.telegram_manager.list_accounts()
+        # Forcer le rechargement des settings pour avoir les infos à jour
+        accounts = self.telegram_manager.list_accounts(reload_settings=True)
         
         if accounts:
             with ui.column().classes('w-full items-center'):
@@ -87,25 +88,60 @@ class AccountsPage:
             account: Dictionnaire avec les informations du compte
         """
         is_connected = account.get('is_connected', False)
+        is_master = account.get('settings', {}).get('is_master', False)
+        
+        # Style doré élégant pour le compte maître
+        if is_master:
+            card_style = '''
+                border: 2px solid #D4AF37;
+                background: linear-gradient(135deg, #FFF8DC 0%, #FFFAEB 50%, #FFF8DC 100%);
+                box-shadow: 0 4px 20px rgba(212, 175, 55, 0.3), 0 0 0 1px rgba(212, 175, 55, 0.1);
+                position: relative;
+            '''
+        else:
+            card_style = ''
         
         with ui.card().classes('p-4 card-modern').style(
-            'width: 280px; height: 96px; flex-shrink: 0; display: flex; flex-direction: column;'
+            f'width: 280px; height: 96px; flex-shrink: 0; display: flex; flex-direction: column; {card_style}'
         ):
+            # Badge couronne pour le compte maître
+            if is_master:
+                ui.html('''
+                    <div style="
+                        position: absolute;
+                        top: -8px;
+                        right: 10px;
+                        background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+                        color: white;
+                        padding: 2px 8px;
+                        border-radius: 12px;
+                        font-size: 11px;
+                        font-weight: bold;
+                        box-shadow: 0 2px 8px rgba(212, 175, 55, 0.4);
+                        border: 1px solid #D4AF37;
+                    ">👑 MAÎTRE</div>
+                ''', sanitize=False)
+            
             with ui.column().classes('w-full h-full justify-between'):
                 # Header avec status et infos
                 with ui.column().classes('gap-2 flex-1'):
                     with ui.row().classes('w-full items-center gap-1'):
                         with ui.row().classes('items-center gap-2 flex-1 min-w-0'):
+                            # Icône couronne pour le compte maître
+                            if is_master:
+                                ui.label('👑').classes('text-xl').style('filter: drop-shadow(0 2px 4px rgba(212, 175, 55, 0.5));')
+                            
                             # Status badge
                             status_class = 'status-online' if is_connected else 'status-offline'
                             ui.html(f'<span class="status-badge {status_class}"></span>', sanitize=False)
                             
-                            # Nom du compte
+                            # Nom du compte avec couleur dorée pour le maître
+                            text_color = '#B8860B' if is_master else 'var(--text-primary)'
                             ui.label(account.get('account_name', 'Sans nom')).classes(
                                 'text-lg font-bold'
                             ).style(
-                                'color: var(--text-primary); white-space: nowrap; overflow: hidden; '
-                                'text-overflow: ellipsis; max-width: 160px;'
+                                f'color: {text_color}; white-space: nowrap; overflow: hidden; '
+                                'text-overflow: ellipsis; max-width: 145px;'
                             )
                         
                         # Bouton Paramètres
@@ -153,6 +189,8 @@ class AccountsPage:
         
         # Charger les paramètres actuels
         settings = self.session_manager.get_account_settings(session_id)
+        is_master = settings.get('is_master', False)
+        can_unset_master = self.session_manager.can_unset_master(session_id)
         
         with ui.dialog() as dialog, ui.card().classes('w-[600px] p-6 card-modern'):
             ui.label('⚙ Paramètres du compte').classes('text-2xl font-bold mb-4').style(
@@ -161,6 +199,23 @@ class AccountsPage:
             ui.label(f"{account_name} ({phone})").classes('text-gray-600 mb-4')
             
             with ui.column().classes('w-full gap-4'):
+                # Compte maître
+                with ui.card().classes('p-4 bg-yellow-50 border-2 border-yellow-200'):
+                    ui.label('👑 Compte Maître').classes('font-bold text-lg mb-2').style('color: #D97706;')
+                    ui.label(
+                        'Le compte maître est utilisé pour afficher les groupes en commun et y répondre. '
+                        'Un seul compte peut être maître à la fois.'
+                    ).classes('text-sm text-gray-600 mb-3')
+                    
+                    master_checkbox = ui.checkbox('Définir comme compte maître', value=is_master).classes('font-semibold')
+                    
+                    # Désactiver la case si c'est le seul compte et qu'il est maître
+                    if is_master and not can_unset_master:
+                        master_checkbox.disable()
+                        ui.label('⚠ Impossible de décocher (compte unique)').classes('text-xs text-orange-600 mt-1')
+                
+                ui.separator()
+                
                 # Nom du compte
                 ui.label('Nom du compte').classes('font-medium')
                 name_input = ui.input(value=account_name).classes('w-full')
@@ -239,6 +294,27 @@ class AccountsPage:
                 async def save() -> None:
                     """Sauvegarde les paramètres."""
                     try:
+                        # Variable pour savoir si on doit rafraîchir
+                        needs_full_refresh = False
+                        
+                        # Gérer le changement de compte maître
+                        new_is_master = master_checkbox.value
+                        if new_is_master != is_master:
+                            needs_full_refresh = True  # Le compte maître a changé
+                            if new_is_master:
+                                # Définir ce compte comme maître (retire automatiquement les autres)
+                                self.session_manager.set_master_account(session_id)
+                                notify('👑 Compte maître défini !', type='positive')
+                            elif can_unset_master:
+                                # Si on retire le statut maître, définir un autre compte comme maître
+                                # Prendre le premier compte disponible
+                                all_accounts = self.telegram_manager.list_accounts()
+                                for acc in all_accounts:
+                                    if acc['session_id'] != session_id:
+                                        self.session_manager.set_master_account(acc['session_id'])
+                                        notify(f'👑 {acc["account_name"]} est maintenant le compte maître', type='info')
+                                        break
+                        
                         # Sauvegarder le nom
                         new_name = name_input.value.strip()
                         if new_name:
@@ -253,8 +329,16 @@ class AccountsPage:
                         )
                         
                         dialog.close()
-                        notify('✅ Paramètres sauvegardés !', type='positive')
-                        ui.timer(0.2, lambda: self.app.show_page('comptes'), once=True)
+                        
+                        # Rafraîchir la page pour afficher les changements
+                        if needs_full_refresh:
+                            notify('✅ Paramètres sauvegardés ! Actualisation...', type='positive')
+                            # Double rafraîchissement pour être sûr que ça prend
+                            self.app.show_page('comptes')
+                            ui.timer(0.1, lambda: self.app.show_page('comptes'), once=True)
+                        else:
+                            notify('✅ Paramètres sauvegardés !', type='positive')
+                            ui.timer(0.1, lambda: self.app.show_page('comptes'), once=True)
                         
                     except Exception as e:
                         logger.error(f"Erreur sauvegarde paramètres: {e}")

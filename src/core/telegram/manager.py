@@ -119,13 +119,34 @@ class TelegramManager:
     
     async def load_existing_sessions(self) -> None:
         """Charge les sessions existantes depuis le disque."""
+        await self.load_existing_sessions_with_progress(None)
+    
+    async def load_existing_sessions_with_progress(self, progress_callback=None) -> None:
+        """
+        Charge les sessions existantes depuis le disque avec callback de progression.
+        
+        Args:
+            progress_callback: Fonction callback(progress: int, message: str)
+        """
         sessions = self.session_manager.list_sessions()
         
-        api_id, api_hash = get_api_credentials()
+        if not sessions:
+            if progress_callback:
+                progress_callback(100, "Aucun compte à charger")
+            return
         
-        for session_info in sessions:
+        api_id, api_hash = get_api_credentials()
+        total = len(sessions)
+        
+        for idx, session_info in enumerate(sessions):
             try:
                 session_id = session_info["session_id"]
+                account_name = session_info.get("account_name", session_info.get("phone", "Compte"))
+                
+                # Calculer la progression (10% à 90%, le 100% sera fait après)
+                progress = 10 + int((idx / total) * 80)
+                if progress_callback:
+                    progress_callback(progress, f"Connexion à {account_name}...")
                 
                 # Vérifier si le fichier de session existe
                 session_file = self.session_manager.get_session_file_path(session_id)
@@ -153,14 +174,24 @@ class TelegramManager:
                 connected = await account.connect()
                 if connected:
                     self.accounts[session_id] = account
+                    if progress_callback:
+                        progress_callback(progress, f"✓ {account_name} connecté")
                 else:
                     # Garder dans les comptes mais marquer comme non autorisé
                     account.is_connected = False
                     self.accounts[session_id] = account
                     self.session_manager.update_session_status(session_id, "unauthorized")
+                    if progress_callback:
+                        progress_callback(progress, f"⚠ {account_name} non autorisé")
                     
             except Exception as e:
                 logger.error(f"Erreur chargement session {session_info.get('phone', 'unknown')}: {e}")
+                if progress_callback:
+                    progress_callback(progress, f"✗ Erreur: {session_info.get('account_name', 'Compte')}")
+        
+        # Progression finale
+        if progress_callback:
+            progress_callback(90, "Finalisation...")
     
     def get_account(self, session_id: str) -> Optional[TelegramAccount]:
         """
@@ -174,13 +205,20 @@ class TelegramManager:
         """
         return self.accounts.get(session_id)
     
-    def list_accounts(self) -> List[Dict]:
+    def list_accounts(self, reload_settings: bool = True) -> List[Dict]:
         """
         Liste tous les comptes.
+        
+        Args:
+            reload_settings: Si True, recharge les settings depuis le fichier
         
         Returns:
             List[Dict]: Liste des comptes avec leurs informations
         """
+        # Recharger l'index si demandé pour avoir les settings à jour
+        if reload_settings:
+            self.session_manager.sessions_index = self.session_manager._load_index()
+        
         return [
             {
                 "session_id": acc.session_id,

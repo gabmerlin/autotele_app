@@ -23,16 +23,24 @@ class AutoTeleApp:
         self.telegram_manager = TelegramManager()
         self.current_page = 'comptes'
         self.content_area: Optional[ui.column] = None
+        self.is_loading_accounts = True
+        self.loading_progress = 0
+        self.loading_message = "Initialisation..."
+        self.progress_bar: Optional[ui.linear_progress] = None
+        self.progress_label: Optional[ui.label] = None
+        self.progress_message: Optional[ui.label] = None
         
         # Import des pages (lazy import pour éviter les imports circulaires)
         from ui.pages.accounts_page import AccountsPage
         from ui.pages.new_message_page import NewMessagePage
         from ui.pages.scheduled_messages_page import ScheduledMessagesPage
+        from ui.pages.messaging_page import MessagingPage
         from utils.notification_manager import notify
         
         self.accounts_page = AccountsPage(self.telegram_manager, self)
         self.new_message_page = NewMessagePage(self.telegram_manager)
         self.scheduled_messages_page = ScheduledMessagesPage(self.telegram_manager)
+        self.messaging_page = MessagingPage(self.telegram_manager)
     
     def _create_verification_callback(self, success_message: str):
         """
@@ -58,11 +66,54 @@ class AutoTeleApp:
     async def initialize(self) -> None:
         """Initialise l'application (charge les sessions existantes)."""
         try:
-            await self.telegram_manager.load_existing_sessions()
+            # Mise à jour de la progression
+            self._update_loading_progress(10, "Chargement des sessions...")
+            
+            # Charger les sessions avec callback de progression
+            await self.telegram_manager.load_existing_sessions_with_progress(
+                lambda progress, message: self._update_loading_progress(progress, message)
+            )
+            
             nb_accounts = len(self.telegram_manager.list_accounts())
             logger.info(f"{nb_accounts} compte(s) chargé(s)")
+            
+            # Finalisation
+            self._update_loading_progress(100, f"✓ {nb_accounts} compte(s) chargé(s)")
+            
+            # Attendre un peu pour voir le 100%
+            await asyncio.sleep(0.5)
+            
+            self.is_loading_accounts = False
+            
+            # Rafraîchir l'affichage maintenant que le chargement est terminé
+            self.show_page(self.current_page)
         except Exception as e:
             logger.error(f"Erreur initialisation: {e}")
+            self._update_loading_progress(100, f"Erreur: {e}")
+            await asyncio.sleep(1)
+            self.is_loading_accounts = False
+            
+            # Rafraîchir l'affichage même en cas d'erreur
+            self.show_page(self.current_page)
+    
+    def _update_loading_progress(self, progress: int, message: str) -> None:
+        """
+        Met à jour la progression du chargement.
+        
+        Args:
+            progress: Pourcentage de progression (0-100)
+            message: Message à afficher
+        """
+        self.loading_progress = progress
+        self.loading_message = message
+        
+        # Mettre à jour les éléments UI si ils existent
+        if self.progress_bar:
+            self.progress_bar.set_value(progress / 100)
+        if self.progress_label:
+            self.progress_label.set_text(f"{progress}%")
+        if self.progress_message:
+            self.progress_message.set_text(message)
     
     def create_sidebar(self) -> None:
         """Crée le menu latéral gauche."""
@@ -81,6 +132,11 @@ class AutoTeleApp:
                 ui.button(
                     f'{ICON_ACCOUNT}  Comptes',
                     on_click=lambda: self.show_page('comptes')
+                ).props('flat align=left').classes('w-full sidebar-btn text-white')
+                
+                ui.button(
+                    '💬  Messagerie',
+                    on_click=lambda: self.show_page('messagerie')
                 ).props('flat align=left').classes('w-full sidebar-btn text-white')
                 
                 ui.button(
@@ -105,7 +161,7 @@ class AutoTeleApp:
         Affiche une page spécifique.
         
         Args:
-            page_name: Nom de la page ('comptes', 'nouveau', 'programme')
+            page_name: Nom de la page ('comptes', 'messagerie', 'nouveau', 'programme')
         """
         self.current_page = page_name
         
@@ -113,14 +169,66 @@ class AutoTeleApp:
             self.content_area.clear()
             
             with self.content_area:
-                if page_name == 'comptes':
-                    self.accounts_page.render()
-                elif page_name == 'nouveau':
-                    self.new_message_page.render()
-                elif page_name == 'programme':
-                    self.scheduled_messages_page.render()
+                # Afficher l'écran de chargement si les comptes sont en cours de chargement
+                if self.is_loading_accounts:
+                    self._render_loading_screen()
+                else:
+                    if page_name == 'comptes':
+                        self.accounts_page.render()
+                    elif page_name == 'messagerie':
+                        self.messaging_page.render()
+                    elif page_name == 'nouveau':
+                        self.new_message_page.render()
+                    elif page_name == 'programme':
+                        self.scheduled_messages_page.render()
             
             self.content_area.update()
+    
+    def _render_loading_screen(self) -> None:
+        """Rend l'écran de chargement pendant l'initialisation des comptes."""
+        with ui.column().classes('w-full h-full items-center justify-center gap-6').style(
+            'min-height: 60vh;'
+        ):
+            # Logo de chargement animé
+            with ui.column().classes('items-center gap-6'):
+                # Spinner animé
+                ui.html('''
+                    <div style="
+                        width: 60px;
+                        height: 60px;
+                        border: 4px solid #e2e8f0;
+                        border-top: 4px solid #3b82f6;
+                        border-radius: 50%;
+                        animation: spin 1s linear infinite;
+                    "></div>
+                    <style>
+                        @keyframes spin {
+                            0% { transform: rotate(0deg); }
+                            100% { transform: rotate(360deg); }
+                        }
+                    </style>
+                ''', sanitize=False)
+                
+                # Texte de chargement
+                ui.label('Chargement des comptes Telegram...').classes('text-xl font-semibold').style(
+                    'color: var(--text-primary);'
+                )
+                
+                # Message de progression
+                self.progress_message = ui.label(self.loading_message).classes('text-sm').style(
+                    'color: var(--text-secondary);'
+                )
+                
+                # Barre de progression avec pourcentage intégré
+                with ui.column().classes('w-80 items-center').style('position: relative; height: 32px;'):
+                    self.progress_bar = ui.linear_progress(value=self.loading_progress / 100).classes('w-full').style(
+                        'height: 32px; border-radius: 8px;'
+                    )
+                    # Label du pourcentage superposé à la barre
+                    self.progress_label = ui.label(f"{self.loading_progress}%").classes('text-base font-bold').style(
+                        'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); '
+                        'color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10; pointer-events: none;'
+                    )
     
     async def add_account_dialog(self) -> None:
         """Affiche le dialogue d'ajout de compte."""
