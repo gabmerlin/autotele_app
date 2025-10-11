@@ -53,9 +53,16 @@ class ScheduledMessagesPage:
     def _render_account_selection(self) -> None:
         """Rend la sélection de compte."""
         with ui.card().classes('w-full p-5 mb-4 card-modern'):
-            ui.label('Sélectionnez un compte').classes('text-lg font-bold mb-3').style(
-                'color: var(--text-primary);'
-            )
+            with ui.row().classes('w-full items-center justify-between mb-3'):
+                ui.label('Sélectionnez un compte').classes('text-lg font-bold').style(
+                    'color: var(--text-primary);'
+                )
+                
+                # Bouton pour scanner tous les comptes
+                ui.button(
+                    '🔍 Scanner tous les comptes',
+                    on_click=self.scan_all_accounts
+                ).props('outline').style('color: var(--accent);')
             
             accounts = self.telegram_manager.list_accounts()
             connected = [acc for acc in accounts if acc.get('is_connected', False)]
@@ -321,6 +328,306 @@ class ScheduledMessagesPage:
             message=f'Supprimer TOUS les {len(self.current_messages)} messages programmés de TOUS les groupes ? Cette action est IRRÉVERSIBLE.',
             on_confirm=on_confirm,
             confirm_text='✕ TOUT SUPPRIMER',
+            is_danger=True
+        )
+        confirm.show()
+    
+    async def scan_all_accounts(self) -> None:
+        """Scanne tous les comptes connectés et affiche tous les messages avec barre de progression."""
+        accounts = self.telegram_manager.list_accounts()
+        connected = [acc for acc in accounts if acc.get('is_connected', False)]
+        
+        if not connected:
+            notify('❌ Aucun compte connecté', type='negative')
+            return
+        
+        total_accounts = len(connected)
+        self.messages_container.clear()
+        
+        # Créer la carte de progression
+        with self.messages_container:
+            with ui.card().classes('w-full p-8 card-modern'):
+                with ui.column().classes('w-full items-center gap-4'):
+                    # Titre
+                    ui.label('🔍 Scan global en cours...').classes('text-2xl font-bold mb-2').style(
+                        'color: var(--primary);'
+                    )
+                    
+                    # Label de progression
+                    progress_label = ui.label('Préparation du scan...').classes('text-lg mb-4').style(
+                        'color: var(--text-secondary);'
+                    )
+                    
+                    # Barre de progression
+                    progress_bar = ui.linear_progress(value=0, show_value=False).classes('w-full')
+                    
+                    # Pourcentage en grand
+                    percentage_label = ui.label('0%').classes('text-4xl font-bold mt-4').style(
+                        'color: var(--primary);'
+                    )
+                    
+                    # Détails
+                    details_label = ui.label('0 / 0 comptes scannés').classes('text-sm mt-2').style(
+                        'color: var(--text-secondary);'
+                    )
+        
+        try:
+            all_messages = []
+            scanned = 0
+            
+            for idx, account_info in enumerate(connected, 1):
+                # Mettre à jour la progression
+                account_name = account_info['account_name']
+                progress_label.set_text(f'Scan de {account_name}...')
+                percentage = (idx - 1) / total_accounts
+                progress_bar.set_value(percentage)
+                percentage_label.set_text(f'{int(percentage * 100)}%')
+                details_label.set_text(f'{idx - 1} / {total_accounts} comptes scannés')
+                
+                account = self.telegram_manager.get_account(account_info['session_id'])
+                if not account:
+                    continue
+                
+                try:
+                    messages = await account.get_all_scheduled_messages()
+                    # Ajouter le nom du compte et session_id à chaque message
+                    for msg in messages:
+                        msg['account_name'] = account.account_name
+                        msg['account_session_id'] = account_info['session_id']
+                    all_messages.extend(messages)
+                    scanned += 1
+                except Exception as e:
+                    logger.error(f"Erreur scan {account.account_name}: {e}")
+                
+                # Mise à jour finale pour ce compte
+                progress_bar.set_value(idx / total_accounts)
+                percentage_label.set_text(f'{int((idx / total_accounts) * 100)}%')
+                details_label.set_text(f'{idx} / {total_accounts} comptes scannés')
+            
+            # Progression à 100%
+            progress_label.set_text('✅ Scan terminé !')
+            progress_bar.set_value(1.0)
+            percentage_label.set_text('100%')
+            details_label.set_text(f'{scanned} / {total_accounts} comptes scannés avec succès')
+            
+            # Petit délai pour voir le 100%
+            await asyncio.sleep(0.5)
+            
+            # Stocker les messages
+            self.current_messages = all_messages
+            self.selected_account = None  # Mode "tous les comptes"
+            
+            # Afficher les messages
+            self.display_all_accounts_messages()
+            
+        except Exception as e:
+            logger.error(f"Erreur scan global: {e}")
+            self.messages_container.clear()
+            with self.messages_container:
+                with ui.card().classes('w-full p-4 bg-red-50'):
+                    ui.label('❌ Erreur lors du scan global').classes('text-red-700 font-bold')
+                    ui.label(str(e)).classes('text-sm text-red-600')
+    
+    def display_all_accounts_messages(self) -> None:
+        """Affiche tous les messages de tous les comptes."""
+        self.messages_container.clear()
+        
+        with self.messages_container:
+            if self.current_messages:
+                # Boutons d'action
+                with ui.row().classes('w-full gap-3 mb-4'):
+                    async def refresh() -> None:
+                        notify(f'{ICON_REFRESH} Rechargement de tous les comptes...', type='info')
+                        await self.scan_all_accounts()
+                    
+                    ui.button(f'{ICON_REFRESH} Rafraîchir tout', on_click=refresh).props('outline').style(
+                        'color: var(--accent);'
+                    )
+                    
+                    ui.button(
+                        '✕ Tout supprimer (TOUS LES COMPTES)',
+                        on_click=self._delete_all_from_all_accounts
+                    ).props('color=red')
+                
+                # Grouper par compte
+                accounts_dict: Dict[str, Dict] = {}
+                for msg in self.current_messages:
+                    account_id = msg['account_session_id']
+                    account_name = msg['account_name']
+                    
+                    if account_id not in accounts_dict:
+                        accounts_dict[account_id] = {
+                            'name': account_name,
+                            'messages': []
+                        }
+                    accounts_dict[account_id]['messages'].append(msg)
+                
+                # Résumé global
+                with ui.card().classes('w-full p-5 mb-4').style(
+                    'background: #ecfdf5; border-left: 3px solid var(--success);'
+                ):
+                    ui.label(
+                        f'✓ {len(self.current_messages)} message(s) programmé(s) sur {len(accounts_dict)} compte(s)'
+                    ).classes('text-lg font-bold').style('color: #065f46;')
+                
+                # Afficher par compte
+                for account_id, account_data in accounts_dict.items():
+                    self._render_account_section(account_id, account_data)
+            else:
+                # Aucun message
+                with ui.card().classes('w-full p-8 card-modern text-center'):
+                    ui.label('●').classes('text-5xl mb-3').style('color: var(--secondary); opacity: 0.3;')
+                    ui.label('Aucun message programmé').classes('text-xl font-bold mb-2').style(
+                        'color: var(--text-secondary);'
+                    )
+                    ui.label('Aucun message programmé trouvé sur tous les comptes.').classes('text-sm').style(
+                        'color: var(--text-secondary); opacity: 0.7;'
+                    )
+    
+    def _render_account_section(self, account_id: str, account_data: Dict) -> None:
+        """Rend une section pour un compte avec tous ses messages."""
+        with ui.card().classes('w-full p-5 mb-4 card-modern'):
+            # En-tête du compte
+            with ui.row().classes('w-full items-center gap-3 mb-4'):
+                ui.label(f'👤 {account_data["name"]}').classes('text-xl font-bold flex-1').style(
+                    'color: var(--primary);'
+                )
+                ui.label(f'{len(account_data["messages"])} message(s)').classes(
+                    'px-3 py-1 rounded text-sm font-semibold'
+                ).style('background: rgba(30, 58, 138, 0.1); color: var(--primary);')
+                
+                def make_delete_account(acc_id: str, acc_name: str):
+                    def delete_account() -> None:
+                        async def on_confirm() -> None:
+                            try:
+                                notify(f'Suppression des messages de {acc_name}...', type='info')
+                                account = self.telegram_manager.get_account(acc_id)
+                                if not account:
+                                    notify('❌ Compte introuvable', type='negative')
+                                    return
+                                
+                                # Grouper par chat
+                                chats: Dict[int, List[int]] = {}
+                                for msg in account_data["messages"]:
+                                    if msg['chat_id'] not in chats:
+                                        chats[msg['chat_id']] = []
+                                    chats[msg['chat_id']].append(msg['message_id'])
+                                
+                                # Supprimer tous les messages de chaque chat
+                                deleted_count = 0
+                                for chat_id, msg_ids in chats.items():
+                                    success, error = await account.delete_scheduled_messages(chat_id, msg_ids)
+                                    if success:
+                                        deleted_count += len(msg_ids)
+                                
+                                notify(f'✅ {deleted_count} message(s) supprimé(s) de {acc_name} !', type='positive')
+                                
+                                # Recharger
+                                await self.scan_all_accounts()
+                                
+                            except Exception as e:
+                                logger.error(f"Erreur suppression compte: {e}")
+                                notify(f'❌ Erreur: {e}', type='negative')
+                        
+                        confirm = ConfirmDialog(
+                            title=f'⚠️ Supprimer tous les messages de "{acc_name}" ?',
+                            message='Cette action est irréversible.',
+                            on_confirm=on_confirm,
+                            confirm_text='Supprimer tout',
+                            is_danger=True
+                        )
+                        confirm.show()
+                    return delete_account
+                
+                ui.button(
+                    '✕ Tout supprimer',
+                    on_click=make_delete_account(account_id, account_data['name'])
+                ).props('flat dense').style('color: var(--danger);')
+            
+            # Grouper par chat
+            chats_dict: Dict[int, Dict] = {}
+            for msg in account_data["messages"]:
+                chat_id = msg['chat_id']
+                if chat_id not in chats_dict:
+                    chats_dict[chat_id] = {
+                        'title': msg['chat_title'],
+                        'messages': []
+                    }
+                chats_dict[chat_id]['messages'].append(msg)
+            
+            # Afficher par groupe
+            for chat_id, chat_data in chats_dict.items():
+                with ui.column().classes('w-full gap-2 pl-4'):
+                    # En-tête du groupe
+                    with ui.row().classes('w-full items-center gap-2 mb-2'):
+                        ui.label(f'• {chat_data["title"]}').classes('text-sm font-semibold').style(
+                            'color: var(--text-primary);'
+                        )
+                        ui.label(f'{len(chat_data["messages"])} msg').classes('text-xs px-2 py-1 rounded').style(
+                            'background: rgba(0, 0, 0, 0.05); color: var(--text-secondary);'
+                        )
+                    
+                    # Messages
+                    for msg in sorted(chat_data['messages'], key=lambda x: x['date']):
+                        with ui.row().classes('w-full items-center gap-2 pl-4 py-1'):
+                            ui.label(msg['date'].strftime('%d/%m/%Y %H:%M')).classes('text-xs font-mono').style(
+                                'color: var(--accent); min-width: 100px;'
+                            )
+                            text = msg['text'][:60] + ('...' if len(msg['text']) > 60 else '')
+                            ui.label(text).classes('text-xs flex-1').style('color: var(--text-secondary);')
+                            
+                            if msg['has_media']:
+                                ui.label(f'📎').classes('text-xs')
+    
+    def _delete_all_from_all_accounts(self) -> None:
+        """Supprime TOUS les messages de TOUS les comptes."""
+        async def on_confirm() -> None:
+            try:
+                notify('🗑️ Suppression globale en cours...', type='warning')
+                
+                # Grouper par compte
+                accounts_dict: Dict[str, List] = {}
+                for msg in self.current_messages:
+                    account_id = msg['account_session_id']
+                    if account_id not in accounts_dict:
+                        accounts_dict[account_id] = []
+                    accounts_dict[account_id].append(msg)
+                
+                total_deleted = 0
+                
+                # Pour chaque compte
+                for account_id, messages in accounts_dict.items():
+                    account = self.telegram_manager.get_account(account_id)
+                    if not account:
+                        continue
+                    
+                    # Grouper par chat
+                    chats: Dict[int, List[int]] = {}
+                    for msg in messages:
+                        if msg['chat_id'] not in chats:
+                            chats[msg['chat_id']] = []
+                        chats[msg['chat_id']].append(msg['message_id'])
+                    
+                    # Supprimer tous les messages de chaque chat
+                    for chat_id, msg_ids in chats.items():
+                        success, error = await account.delete_scheduled_messages(chat_id, msg_ids)
+                        if success:
+                            total_deleted += len(msg_ids)
+                
+                notify(f'✅ {total_deleted} message(s) supprimé(s) de tous les comptes !', type='positive')
+                
+                # Recharger
+                await self.scan_all_accounts()
+                
+            except Exception as e:
+                logger.error(f"Erreur suppression globale: {e}")
+                notify(f'❌ Erreur: {e}', type='negative')
+        
+        confirm = ConfirmDialog(
+            title='⚠ DANGER - SUPPRESSION GLOBALE',
+            message=f'Supprimer TOUS les {len(self.current_messages)} messages de TOUS les comptes ? Cette action est IRRÉVERSIBLE et affectera TOUS vos comptes connectés.',
+            on_confirm=on_confirm,
+            confirm_text='✕ SUPPRIMER ABSOLUMENT TOUT',
             is_danger=True
         )
         confirm.show()

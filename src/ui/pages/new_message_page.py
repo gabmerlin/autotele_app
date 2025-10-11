@@ -12,6 +12,7 @@ from core.telegram.manager import TelegramManager
 from core.session_manager import SessionManager
 from services.message_service import MessageService
 from services.dialog_service import DialogService
+from services.sending_tasks_manager import sending_tasks_manager
 from ui.components.calendar import CalendarWidget
 from utils.logger import get_logger
 from utils.constants import (
@@ -156,6 +157,14 @@ class NewMessagePage:
                             notify(MSG_SELECT_ACCOUNT, type='warning')
                             return
                         
+                        # 🔒 Vérifier si le compte est occupé
+                        if sending_tasks_manager.is_account_busy(self.state['selected_account']):
+                            notify(
+                                '⚠️ Ce compte envoie déjà des messages. Attendez la fin de l\'envoi pour éviter le rate limit.',
+                                type='warning'
+                            )
+                            return
+                        
                         # Charger les groupes
                         notify('Chargement des groupes...', type='info')
                         account = self.telegram_manager.get_account(self.state['selected_account'])
@@ -175,23 +184,39 @@ class NewMessagePage:
         """Rend une carte de compte sélectionnable."""
         session_id = account['session_id']
         is_selected = self.state['selected_account'] == session_id
+        is_busy = sending_tasks_manager.is_account_busy(session_id)
         
-        card_class = 'w-full p-3 cursor-pointer mb-2 card-modern'
-        if is_selected:
+        card_class = 'w-full p-3 mb-2 card-modern'
+        
+        if is_busy:
+            # Compte occupé - grisé et non cliquable
+            card_class += ' cursor-not-allowed'
+            card_style = 'border: 1px solid var(--border); background: rgba(128, 128, 128, 0.1); opacity: 0.6;'
+            icon, icon_color = '⏳', 'var(--warning)'
+        elif is_selected:
+            card_class += ' cursor-pointer'
             card_style = 'border: 2px solid var(--primary); background: rgba(30, 58, 138, 0.05);'
             icon, icon_color = '●', 'var(--primary)'
         else:
+            card_class += ' cursor-pointer'
             card_style = 'border: 1px solid var(--border);'
             icon, icon_color = '○', 'var(--text-secondary)'
         
         def select_account() -> None:
+            if is_busy:
+                notify('⏳ Ce compte est occupé par un envoi en cours', type='warning')
+                return
             self.state['selected_account'] = session_id
             # Réinitialiser le message pour charger celui du nouveau compte
             self.state['message'] = ''
             notify(f'Compte sélectionné: {account["account_name"]}', type='info')
             self.render_steps()
         
-        with ui.card().classes(card_class).style(card_style).on('click', select_account):
+        card = ui.card().classes(card_class).style(card_style)
+        if not is_busy:
+            card.on('click', select_account)
+        
+        with card:
             with ui.row().classes('w-full items-center gap-3'):
                 ui.label(icon).classes('text-lg').style(f'color: {icon_color};')
                 with ui.column().classes('flex-1 gap-1'):
@@ -199,7 +224,13 @@ class NewMessagePage:
                         f'color: {icon_color if is_selected else "var(--text-primary)"};'
                     )
                     ui.label(account['phone']).classes('text-xs').style('color: var(--text-secondary);')
-                ui.html('<span class="status-badge status-online"></span>', sanitize=False)
+                
+                if is_busy:
+                    ui.label('Envoi en cours...').classes('text-xs font-semibold px-2 py-1 rounded').style(
+                        'background: rgba(251, 191, 36, 0.2); color: var(--warning);'
+                    )
+                else:
+                    ui.html('<span class="status-badge status-online"></span>', sanitize=False)
     
     def _render_step_groups(self) -> None:
         """Étape 2 : Sélection des groupes."""
@@ -1001,19 +1032,45 @@ class NewMessagePage:
         # Fichier à envoyer (premier fichier uniquement pour le moment)
         file_path = self.state['files'][0]['path'] if self.state['files'] else None
         
-        # Afficher dialogue de progression
+        # Créer une tâche dans le gestionnaire
+        task = sending_tasks_manager.create_task(
+            account_session_id=self.state['selected_account'],
+            account_name=account.account_name,
+            group_count=len(self.state['selected_groups']),
+            date_count=len(self.state['selected_dates']),
+            total_messages=len(self.state['selected_groups']) * len(scheduled_datetimes)
+        )
+        
+        # Afficher dialogue de progression avec bouton Minimiser
         with ui.dialog() as progress_dialog, ui.card().classes('w-96 p-6'):
             ui.label('📤 Envoi en cours...').classes('text-xl font-bold mb-4')
             progress_label = ui.label('Préparation...').classes('mb-2')
-            progress_bar = ui.linear_progress(value=0).classes('w-full')
-            cancel_button = ui.button('✕ Annuler', on_click=lambda: cancel_flag.update({'value': True})).props('flat color=red')
+            progress_bar = ui.linear_progress(value=0).classes('w-full mb-4')
+            
+            with ui.row().classes('w-full gap-3'):
+                def minimize():
+                    progress_dialog.close()
+                    # Retour à l'étape 1
+                    self.state['current_step'] = 1
+                    self.state['selected_account'] = None
+                    self.state['selected_groups'] = []
+                    self.state['message'] = ''
+                    self.state['files'] = []
+                    self.state['selected_dates'] = []
+                    self.state['selected_schedules'] = []
+                    self.state['final_schedule'] = []
+                    self.render_steps()
+                    notify('📤 Envoi en arrière-plan, consultez l\'onglet "Envois en cours"', type='info')
+                
+                ui.button('⬇ Minimiser', on_click=minimize).props('outline').classes('flex-1')
+                ui.button('✕ Annuler', on_click=lambda: task.cancel()).props('flat color=red').classes('flex-1')
         
         progress_dialog.open()
         
-        cancel_flag = {'value': False}
-        
         def on_progress(sent: int, total: int, skipped: int, failed_groups: Set[int]) -> None:
-            """Met à jour la progression."""
+            """Met à jour la progression avec le total ajusté dynamiquement."""
+            # ✅ Passer le total ajusté pour que l'interface reflète les exclusions
+            task.update_progress(sent, skipped, failed_groups, total_adjusted=total)
             progress = sent / total if total > 0 else 0
             progress_bar.set_value(progress)
             progress_label.set_text(f'{sent}/{total} messages envoyés ({skipped} ignorés, {len(failed_groups)} groupes en erreur)')
@@ -1029,12 +1086,18 @@ class NewMessagePage:
                 dates=scheduled_datetimes,
                 file_path=file_path,
                 on_progress=on_progress,
-                cancelled_flag=cancel_flag
+                cancelled_flag=task.cancel_flag,
+                task=task  # ⏰ Passer la tâche pour l'affichage des attentes
             )
             
-            progress_dialog.close()
+            # Marquer la tâche comme terminée
+            task.complete()
             
-            if cancel_flag['value']:
+            # Fermer le dialogue s'il est encore ouvert
+            if progress_dialog.value:
+                progress_dialog.close()
+            
+            if task.cancel_flag['value']:
                 notify(f'⚠️ Envoi annulé : {sent} messages envoyés', type='warning')
             elif failed_groups:
                 notify(
@@ -1060,7 +1123,9 @@ class NewMessagePage:
             self.render_steps()
             
         except Exception as e:
-            progress_dialog.close()
+            task.status = "annulé"
+            if progress_dialog.value:
+                progress_dialog.close()
             logger.error(f"Erreur envoi messages: {e}")
             notify(f'❌ Erreur: {e}', type='negative')
 

@@ -9,8 +9,9 @@ from core.telegram.manager import TelegramManager
 from ui.components.styles import get_global_styles
 from ui.components.dialogs import VerificationDialog, ConfirmDialog
 from utils.logger import get_logger
-from utils.constants import APP_NAME, ICON_ACCOUNT, ICON_MESSAGE, ICON_SCHEDULED
-from utils.validators import validate_phone_number, validate_account_name
+from utils.constants import APP_NAME, ICON_ACCOUNT, ICON_MESSAGE, ICON_SCHEDULED, ICON_WARNING, ICON_ERROR
+from utils.validators import validate_phone_number, validate_account_name, validate_verification_code
+from utils.notification_manager import notify
 
 logger = get_logger()
 
@@ -35,12 +36,14 @@ class AutoTeleApp:
         from ui.pages.new_message_page import NewMessagePage
         from ui.pages.scheduled_messages_page import ScheduledMessagesPage
         from ui.pages.messaging_page import MessagingPage
+        from ui.pages.sending_tasks_page import SendingTasksPage
         from utils.notification_manager import notify
         
         self.accounts_page = AccountsPage(self.telegram_manager, self)
         self.new_message_page = NewMessagePage(self.telegram_manager)
         self.scheduled_messages_page = ScheduledMessagesPage(self.telegram_manager)
         self.messaging_page = MessagingPage(self.telegram_manager)
+        self.sending_tasks_page = SendingTasksPage()
     
     def _create_verification_callback(self, success_message: str):
         """
@@ -75,7 +78,6 @@ class AutoTeleApp:
             )
             
             nb_accounts = len(self.telegram_manager.list_accounts())
-            logger.info(f"{nb_accounts} compte(s) chargé(s)")
             
             # Finalisation
             self._update_loading_progress(100, f"✓ {nb_accounts} compte(s) chargé(s)")
@@ -148,6 +150,11 @@ class AutoTeleApp:
                     f'{ICON_SCHEDULED}  Messages Programmés',
                     on_click=lambda: self.show_page('programme')
                 ).props('flat align=left').classes('w-full sidebar-btn text-white')
+                
+                ui.button(
+                    '📤  Envois en cours',
+                    on_click=lambda: self.show_page('envois')
+                ).props('flat align=left').classes('w-full sidebar-btn text-white')
             
             ui.space()
             
@@ -161,7 +168,7 @@ class AutoTeleApp:
         Affiche une page spécifique.
         
         Args:
-            page_name: Nom de la page ('comptes', 'messagerie', 'nouveau', 'programme')
+            page_name: Nom de la page ('comptes', 'messagerie', 'nouveau', 'programme', 'envois')
         """
         self.current_page = page_name
         
@@ -181,6 +188,8 @@ class AutoTeleApp:
                         self.new_message_page.render()
                     elif page_name == 'programme':
                         self.scheduled_messages_page.render()
+                    elif page_name == 'envois':
+                        self.sending_tasks_page.render()
             
             self.content_area.update()
     
@@ -272,15 +281,68 @@ class AutoTeleApp:
                         
                         if success:
                             notify('Code envoyé ! Vérifiez votre Telegram', type='positive')
-                            dialog.close()
                             
-                            # Afficher le dialogue de vérification
-                            on_verify = self._create_verification_callback('🎉 Compte ajouté avec succès !')
+                            # Vider le contenu du dialogue actuel et le remplacer par le formulaire de vérification
+                            dialog.clear()
                             
-                            verification_dialog = VerificationDialog(
-                                name, phone, session_id, on_verify
-                            )
-                            verification_dialog.show()
+                            with dialog:
+                                with ui.card().classes('w-96 p-6 card-modern'):
+                                    ui.label('✓ Vérification').classes('text-2xl font-bold mb-4').style(
+                                        'color: var(--text-primary);'
+                                    )
+                                    
+                                    with ui.column().classes('w-full gap-4'):
+                                        ui.label(f'Compte: {name} ({phone})').classes('text-gray-600')
+                                        
+                                        ui.label('Code de vérification').classes('font-medium')
+                                        code_input = ui.input(placeholder='12345').classes('w-full')
+                                        
+                                        ui.label('Mot de passe 2FA (si activé)').classes('font-medium')
+                                        password_input = ui.input(
+                                            placeholder='Laissez vide si pas de 2FA',
+                                            password=True
+                                        ).classes('w-full')
+                                        
+                                        with ui.card().classes('p-3').style(
+                                            'background: #fef3c7; border-left: 3px solid var(--warning);'
+                                        ):
+                                            ui.label(
+                                                f'{ICON_WARNING} Le mot de passe 2FA n\'est requis que si vous l\'avez activé sur Telegram'
+                                            ).classes('text-sm').style('color: #92400e;')
+                                        
+                                        async def verify() -> None:
+                                            """Vérifie le code de vérification."""
+                                            code = code_input.value.strip()
+                                            password = password_input.value.strip() if password_input.value else None
+                                            
+                                            # Validation
+                                            is_valid, error_msg = validate_verification_code(code)
+                                            if not is_valid:
+                                                notify(error_msg, type='warning')
+                                                return
+                                            
+                                            try:
+                                                notify('Vérification en cours...', type='info')
+                                                success_msg, error = await self.telegram_manager.verify_account(session_id, code, password)
+                                                if success_msg:
+                                                    notify('🎉 Compte ajouté avec succès !', type='positive')
+                                                    dialog.close()
+                                                    ui.timer(0.2, lambda: self.show_page('comptes'), once=True)
+                                                else:
+                                                    notify(f'{ICON_ERROR} {error}', type='negative')
+                                            except Exception as e:
+                                                logger.error(f"Erreur vérification: {e}")
+                                                notify(f'{ICON_ERROR} {e}', type='negative')
+                                        
+                                        def cancel() -> None:
+                                            """Annule la vérification."""
+                                            dialog.close()
+                                        
+                                        with ui.row().classes('w-full justify-end gap-2 mt-4'):
+                                            ui.button('Annuler', on_click=cancel).props('flat').style(
+                                                'color: var(--secondary);'
+                                            )
+                                            ui.button('✓ Vérifier', on_click=verify).classes('btn-primary')
                         else:
                             notify(f'Erreur: {message}', type='negative')
                     
@@ -340,13 +402,68 @@ class AutoTeleApp:
             if success:
                 notify('Code envoyé ! Vérifiez votre Telegram', type='positive')
                 
-                # Afficher le dialogue de vérification
-                on_verify = self._create_verification_callback('✅ Compte reconnecté avec succès !')
+                # Créer le dialogue sans contexte spécifique (au niveau global)
+                verification_dialog = ui.dialog().props('persistent')
                 
-                verification_dialog = VerificationDialog(
-                    account_name, phone, session_id, on_verify
-                )
-                verification_dialog.show()
+                with verification_dialog, ui.card().classes('w-96 p-6 card-modern'):
+                    ui.label('✓ Vérification').classes('text-2xl font-bold mb-4').style(
+                        'color: var(--text-primary);'
+                    )
+                    
+                    with ui.column().classes('w-full gap-4'):
+                        ui.label(f'Compte: {account_name} ({phone})').classes('text-gray-600')
+                        
+                        ui.label('Code de vérification').classes('font-medium')
+                        code_input = ui.input(placeholder='12345').classes('w-full')
+                        
+                        ui.label('Mot de passe 2FA (si activé)').classes('font-medium')
+                        password_input = ui.input(
+                            placeholder='Laissez vide si pas de 2FA',
+                            password=True
+                        ).classes('w-full')
+                        
+                        with ui.card().classes('p-3').style(
+                            'background: #fef3c7; border-left: 3px solid var(--warning);'
+                        ):
+                            ui.label(
+                                f'{ICON_WARNING} Le mot de passe 2FA n\'est requis que si vous l\'avez activé sur Telegram'
+                            ).classes('text-sm').style('color: #92400e;')
+                        
+                        async def verify() -> None:
+                            """Vérifie le code de vérification."""
+                            code = code_input.value.strip()
+                            password = password_input.value.strip() if password_input.value else None
+                            
+                            # Validation
+                            is_valid, error_msg = validate_verification_code(code)
+                            if not is_valid:
+                                notify(error_msg, type='warning')
+                                return
+                            
+                            try:
+                                notify('Vérification en cours...', type='info')
+                                success_msg, error = await self.telegram_manager.verify_account(session_id, code, password)
+                                if success_msg:
+                                    notify('✅ Compte reconnecté avec succès !', type='positive')
+                                    verification_dialog.close()
+                                    ui.timer(0.2, lambda: self.show_page('comptes'), once=True)
+                                else:
+                                    notify(f'{ICON_ERROR} {error}', type='negative')
+                            except Exception as e:
+                                logger.error(f"Erreur vérification: {e}")
+                                notify(f'{ICON_ERROR} {e}', type='negative')
+                        
+                        def cancel() -> None:
+                            """Annule la vérification."""
+                            verification_dialog.close()
+                        
+                        with ui.row().classes('w-full justify-end gap-2 mt-4'):
+                            ui.button('Annuler', on_click=cancel).props('flat').style(
+                                'color: var(--secondary);'
+                            )
+                            ui.button('✓ Vérifier', on_click=verify).classes('btn-primary')
+                
+                verification_dialog.open()
             else:
                 notify(f'Erreur: {message}', type='negative')
         

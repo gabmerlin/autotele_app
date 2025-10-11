@@ -35,6 +35,7 @@ class MessagingPage:
             'selected_conversation': None,  # Conversation actuellement affichée
             'messages': [],  # Messages de la conversation sélectionnée
             'current_account_for_reply': None,  # Compte utilisé pour répondre
+            'show_groups': False,  # Afficher ou non les groupes
         }
         
         # Conteneurs UI
@@ -73,11 +74,11 @@ class MessagingPage:
                 self._render_messages_area()
         
         # Charger les conversations au démarrage
-        ui.timer(0.5, lambda: asyncio.create_task(self._load_conversations()), once=True)
+        ui.timer(2.0, lambda: asyncio.create_task(self._load_conversations()), once=True)
         
-        # Rafraîchissement automatique toutes les 60 secondes (au lieu de 10)
+        # Rafraîchissement automatique toutes les 300 secondes (5 min)
         # Cela réduit drastiquement la charge
-        self.refresh_timer = ui.timer(60, lambda: asyncio.create_task(self._refresh_conversations()))
+        self.refresh_timer = ui.timer(300, lambda: asyncio.create_task(self._refresh_conversations()))
     
     def _render_header(self) -> None:
         """Rend l'en-tête avec sélecteur de comptes."""
@@ -150,12 +151,24 @@ class MessagingPage:
             'width: 380px; height: 100%; background: var(--bg-primary); '
             'border-right: 1px solid var(--border); overflow: hidden;'
         ):
-            # Barre de recherche
-            with ui.row().classes('w-full p-4 gap-2').style('border-bottom: 1px solid var(--border);'):
+            # Barre de recherche et filtres
+            with ui.column().classes('w-full p-4 gap-2').style('border-bottom: 1px solid var(--border);'):
                 self.search_input = ui.input(
                     placeholder='🔍 Rechercher...',
                     on_change=self._on_search_conversations
-                ).classes('flex-1').props('dense outlined')
+                ).classes('w-full').props('dense outlined')
+                
+                # Case à cocher pour afficher les groupes
+                async def toggle_groups(e):
+                    self.state['show_groups'] = e.value
+                    # Recharger les conversations avec/sans groupes
+                    await self._load_conversations(force=True)
+                
+                ui.checkbox(
+                    'Afficher les groupes',
+                    value=self.state['show_groups'],
+                    on_change=toggle_groups
+                ).classes('text-sm').style('color: var(--text-primary);')
             
             # Liste des conversations
             self.conversations_container = ui.column().classes('w-full gap-0 flex-1').style(
@@ -314,6 +327,15 @@ class MessagingPage:
                 for conv in conversations:
                     self._render_conversation_item(conv)
     
+    def _update_conversation_selection(self) -> None:
+        """Met à jour seulement la sélection visuelle des conversations (sans re-render)."""
+        if not self.conversations_container:
+            return
+        
+        # Cette méthode peut être appelée pour mettre à jour juste les styles de sélection
+        # sans re-render toute la liste
+        pass
+    
     def _render_conversation_item(self, conv: Dict) -> None:
         """Rend un élément de conversation."""
         # Créer un ID unique pour cette conversation (session_id + entity_id)
@@ -330,8 +352,9 @@ class MessagingPage:
         async def select_conversation():
             # Marquer comme sélectionnée
             self.state['selected_conversation'] = conv
+            
+            # Mettre à jour seulement l'en-tête (pas toute la liste)
             self._update_conversation_header()
-            self._update_conversations_list()
             
             # Charger les messages - utiliser le session_id stocké
             account_session_id = conv.get('session_id')
@@ -492,7 +515,7 @@ class MessagingPage:
     
     async def _load_conversations(self, force: bool = False) -> None:
         """
-        Charge les conversations de tous les comptes sélectionnés.
+        Charge les conversations avec cache persistant.
         
         Args:
             force: Force le rechargement même si le cache est valide
@@ -505,16 +528,28 @@ class MessagingPage:
         
         # Éviter les chargements multiples simultanés
         if self._is_loading_conversations:
-            logger.info("Chargement déjà en cours, ignoré")
             return
         
-        # Vérifier le cache (ne pas recharger si moins de 60s pour les conversations)
-        import time
-        current_time = time.time()
-        if not force and (current_time - self._conversations_cache_time) < self._cache_duration:
-            logger.info(f"Cache valide, pas de rechargement (cache: {int(current_time - self._conversations_cache_time)}s)")
-            return
+        # Vérifier le cache persistant
+        if not force and MessagingService.is_cache_valid(max_age_minutes=30):
+            conversations_by_account = MessagingService.load_conversations_cache()
+            
+            if conversations_by_account:
+                # Convertir les strings datetime en objets datetime
+                for session_id, conversations in conversations_by_account.items():
+                    for conv in conversations:
+                        if conv.get('last_message_date') and isinstance(conv['last_message_date'], str):
+                            try:
+                                from datetime import datetime
+                                conv['last_message_date'] = datetime.fromisoformat(conv['last_message_date'])
+                            except:
+                                conv['last_message_date'] = None
+                
+                # Fusionner les conversations
+                self._merge_and_display_conversations(conversations_by_account)
+                return
         
+        # Chargement depuis l'API
         self._is_loading_conversations = True
         
         try:
@@ -524,7 +559,7 @@ class MessagingPage:
             
             conversations_by_account = {}
             
-            # Charger les conversations en parallèle pour plus de rapidité
+            # Charger les conversations en parallèle
             import asyncio
             tasks = []
             accounts_map = {}
@@ -532,73 +567,27 @@ class MessagingPage:
             for session_id in self.state['selected_accounts']:
                 account = self.telegram_manager.get_account(session_id)
                 if account and account.is_connected:
-                    task = MessagingService.get_conversations(account, limit=20)  # Réduit à 20 pour plus de rapidité
+                    limit = 50 if not self.state['show_groups'] else 20
+                    task = MessagingService.get_conversations(
+                        account, 
+                        limit=limit,
+                        include_groups=self.state['show_groups']
+                    )
                     tasks.append(task)
                     accounts_map[len(tasks) - 1] = session_id
             
-            # Attendre que toutes les conversations soient chargées
             if tasks:
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 for idx, result in enumerate(results):
                     if not isinstance(result, Exception):
                         session_id = accounts_map[idx]
                         conversations_by_account[session_id] = result
+                
+                # Sauvegarder dans le cache
+                MessagingService.save_conversations_cache(conversations_by_account)
             
-            # Récupérer le compte maître pour filtrer les doublons
-            from core.session_manager import SessionManager
-            session_mgr = SessionManager()
-            master_account_id = session_mgr.get_master_account()
-            
-            # Créer un mapping session_id -> nom du compte
-            account_names = {}
-            account_names_to_session = {}  # Mapping inverse nom -> session_id
-            for session_id in self.state['selected_accounts']:
-                account = self.telegram_manager.get_account(session_id)
-                if account:
-                    account_names[session_id] = account.account_name
-                    account_names_to_session[account.account_name] = session_id
-            
-            # Fusionner toutes les conversations (avec filtrage des doublons par compte maître)
-            # MAIS seulement pour les comptes sélectionnés
-            filtered_conversations_by_account = {
-                session_id: convs for session_id, convs in conversations_by_account.items()
-                if session_id in self.state['selected_accounts']
-            }
-            
-            all_convs = MessagingService.merge_conversations_from_accounts(
-                filtered_conversations_by_account,
-                master_account_id=master_account_id if master_account_id in self.state['selected_accounts'] else None,
-                account_names=account_names
-            )
-            
-            # Ajouter le session_id à chaque conversation pour faciliter la sélection
-            for conv in all_convs:
-                account_name = conv.get('account_name')
-                conv['session_id'] = account_names_to_session.get(account_name, account_name)
-            
-            self.state['all_conversations'] = all_convs
-            
-            # Préserver le filtrage existant si il y en a un
-            current_search = getattr(self, '_current_search_text', '')
-            if current_search:
-                self.state['filtered_conversations'] = [
-                    conv for conv in all_convs
-                    if current_search.lower() in conv['title'].lower()
-                ]
-                # Restaurer le texte de recherche dans l'input
-                if self.search_input:
-                    self.search_input.value = current_search
-            else:
-                self.state['filtered_conversations'] = all_convs.copy()
-            
-            self._update_conversations_list()
-            
-            # Mettre à jour le cache
-            self._conversations_cache_time = current_time
-            
-            # Ne pas afficher la notification si c'est un rafraîchissement automatique
-            if not hasattr(self, '_is_refreshing'):
-                notify(f'✓ {len(all_convs)} conversation(s) chargée(s)', type='positive')
+            # Fusionner et afficher
+            self._merge_and_display_conversations(conversations_by_account)
             
         except Exception as e:
             logger.error(f"Erreur chargement conversations: {e}")
@@ -608,33 +597,68 @@ class MessagingPage:
         finally:
             self._is_loading_conversations = False
     
+    def _merge_and_display_conversations(self, conversations_by_account: dict) -> None:
+        """Fusionne et affiche les conversations."""
+        # Récupérer le compte maître
+        from core.session_manager import SessionManager
+        session_mgr = SessionManager()
+        master_account_id = session_mgr.get_master_account()
+        
+        # Créer le mapping des noms
+        account_names = {}
+        account_names_to_session = {}
+        for session_id in self.state['selected_accounts']:
+            account = self.telegram_manager.get_account(session_id)
+            if account:
+                account_names[session_id] = account.account_name
+                account_names_to_session[account.account_name] = session_id
+        
+        # Fusionner
+        filtered_conversations_by_account = {
+            session_id: convs for session_id, convs in conversations_by_account.items()
+            if session_id in self.state['selected_accounts']
+        }
+        
+        all_convs = MessagingService.merge_conversations_from_accounts(
+            filtered_conversations_by_account,
+            master_account_id=master_account_id if master_account_id in self.state['selected_accounts'] else None,
+            account_names=account_names
+        )
+        
+        # Ajouter session_id
+        for conv in all_convs:
+            account_name = conv.get('account_name')
+            conv['session_id'] = account_names_to_session.get(account_name, account_name)
+        
+        self.state['all_conversations'] = all_convs
+        self._apply_filters()
+        
+        if not hasattr(self, '_is_refreshing'):
+            notify(f'✓ {len(all_convs)} conversation(s) chargée(s)', type='positive')
+    
     async def _load_messages(self, chat_id: int, account_session_id: str) -> None:
         """Charge les messages d'une conversation."""
         try:
             account = self.telegram_manager.get_account(account_session_id)
             if not account or not account.is_connected:
-                notify('Compte non connecté', type='negative')
+                ui.notify('Compte non connecté', type='negative')
                 return
             
-            # Charger seulement 30 messages au lieu de 50 pour plus de rapidité
-            messages = await MessagingService.get_messages(account, chat_id, limit=20)  # Réduit à 20 pour plus de rapidité
+            # Charger seulement 20 messages pour plus de rapidité
+            messages = await MessagingService.get_messages(account, chat_id, limit=20)
             
             self.state['messages'] = messages
             self._update_messages_display()
             
-            # Faire défiler vers le bas pour afficher les derniers messages
-            # Plusieurs tentatives avec délais progressifs pour s'assurer que ça fonctionne
-            ui.timer(0.2, lambda: self._scroll_to_bottom(), once=True)
-            ui.timer(0.5, lambda: self._scroll_to_bottom(), once=True)
-            ui.timer(0.8, lambda: self._scroll_to_bottom(), once=True)
-            ui.timer(1.0, lambda: self._scroll_to_bottom(), once=True)
+            # Faire défiler vers le bas (une seule tentative)
+            ui.timer(0.3, lambda: self._scroll_to_bottom(), once=True)
             
             # Marquer comme lu
             await MessagingService.mark_as_read(account, chat_id)
             
         except Exception as e:
             logger.error(f"Erreur chargement messages: {e}")
-            notify('Erreur lors du chargement des messages', type='negative')
+            ui.notify('Erreur lors du chargement des messages', type='negative')
     
     async def _refresh_conversations(self) -> None:
         """Rafraîchit les conversations automatiquement."""
@@ -644,7 +668,6 @@ class MessagingPage:
             
             # Éviter les rafraîchissements trop fréquents (throttling)
             if current_time - self._last_refresh_time < 30:
-                logger.info("Rafraîchissement ignoré (trop récent)")
                 return
             
             self._last_refresh_time = current_time
@@ -654,16 +677,28 @@ class MessagingPage:
     
     def _on_search_conversations(self, e) -> None:
         """Filtre les conversations par recherche."""
-        search_text = e.value
-        self._current_search_text = search_text  # Sauvegarder le texte de recherche
+        self._current_search_text = e.value  # Sauvegarder le texte de recherche
+        self._apply_filters()
+    
+    def _apply_filters(self) -> None:
+        """Applique le filtre de recherche aux conversations."""
+        search_text = getattr(self, '_current_search_text', '')
         
-        if not search_text:
-            self.state['filtered_conversations'] = self.state['all_conversations'].copy()
-        else:
-            self.state['filtered_conversations'] = [
-                conv for conv in self.state['all_conversations']
+        # Restaurer le texte de recherche dans l'input si nécessaire
+        if search_text and self.search_input:
+            self.search_input.value = search_text
+        
+        # Commencer avec toutes les conversations (déjà filtrées par type au chargement)
+        filtered = self.state['all_conversations'].copy()
+        
+        # Filtrer par recherche
+        if search_text:
+            filtered = [
+                conv for conv in filtered
                 if search_text.lower() in conv['title'].lower()
             ]
+        
+        self.state['filtered_conversations'] = filtered
         
         # Garder la conversation sélectionnée si elle est toujours visible
         if self.state['selected_conversation']:
@@ -685,59 +720,58 @@ class MessagingPage:
         if e.args.get('key') == 'Enter':
             # Si Shift n'est pas pressé, envoyer le message
             if not e.args.get('shiftKey', False):
-                # Empêcher le comportement par défaut (retour à la ligne) avec JavaScript
-                ui.run_javascript('event.preventDefault();')
+                # Empêcher le comportement par défaut
+                try:
+                    e.sender.prevent_default()
+                except:
+                    pass
                 
-                # Envoyer le message
-                async def send_on_enter():
-                    if not self.state['selected_conversation']:
-                        notify('Sélectionnez une conversation', type='warning')
-                        return
-                    
-                    if not self.message_input.value or not self.message_input.value.strip():
-                        notify('Le message ne peut pas être vide', type='warning')
-                        return
-                    
-                    message = self.message_input.value.strip()
-                    
-                    # Trouver le compte associé à cette conversation
-                    conv = self.state['selected_conversation']
-                    account_session_id = conv.get('account_name')  # En fait c'est le session_id
-                    
-                    if not account_session_id:
-                        notify('Impossible de déterminer le compte', type='negative')
-                        return
-                    
-                    account = self.telegram_manager.get_account(account_session_id)
-                    if not account or not account.is_connected:
-                        notify('Compte non connecté', type='negative')
-                        return
-                    
-                    # Envoyer le message
-                    success = await MessagingService.send_message(
-                        account,
-                        conv['entity_id'],
-                        message
-                    )
-                    
-                    if success:
-                        notify('✓ Message envoyé', type='positive')
-                        
-                        # Ajouter le message envoyé immédiatement à l'affichage
-                        self._add_sent_message_to_display(message)
-                        
-                        self.message_input.value = ''
-                        
-                        # Rafraîchir les messages pour s'assurer qu'on a la version complète
-                        await self._load_messages(conv['entity_id'], account_session_id)
-                        
-                        # Rafraîchir aussi la liste des conversations pour mettre à jour le dernier message
-                        await self._load_conversations(force=True)  # Force le rechargement après envoi
-                    else:
-                        notify('Erreur lors de l\'envoi', type='negative')
+                # Envoyer le message directement (pas en tâche asynchrone)
+                if not self.state['selected_conversation']:
+                    ui.notify('Sélectionnez une conversation', type='warning')
+                    return
                 
-                # Exécuter l'envoi
-                asyncio.create_task(send_on_enter())
+                if not self.message_input.value or not self.message_input.value.strip():
+                    ui.notify('Le message ne peut pas être vide', type='warning')
+                    return
+                
+                message = self.message_input.value.strip()
+                
+                # Trouver le compte
+                conv = self.state['selected_conversation']
+                account_session_id = conv.get('session_id')
+                
+                if not account_session_id:
+                    ui.notify('Impossible de déterminer le compte', type='negative')
+                    return
+                
+                account = self.telegram_manager.get_account(account_session_id)
+                if not account or not account.is_connected:
+                    ui.notify('Compte non connecté', type='negative')
+                    return
+                
+                # Envoyer en tâche asynchrone mais avec gestion d'erreur
+                async def send_and_handle():
+                    try:
+                        success = await MessagingService.send_message(
+                            account,
+                            conv['entity_id'],
+                            message
+                        )
+                        
+                        if success:
+                            ui.notify('✓ Message envoyé', type='positive')
+                            self._add_sent_message_to_display(message)
+                            self.message_input.value = ''
+                            await self._load_messages(conv['entity_id'], account_session_id)
+                        else:
+                            ui.notify('Erreur lors de l\'envoi', type='negative')
+                    except Exception as ex:
+                        logger.error(f"Erreur envoi message: {ex}")
+                        ui.notify('Erreur lors de l\'envoi', type='negative')
+                
+                # Lancer la tâche
+                asyncio.create_task(send_and_handle())
     
     def _scroll_to_bottom(self) -> None:
         """Fait défiler la zone des messages vers le bas."""

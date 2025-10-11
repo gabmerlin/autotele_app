@@ -38,7 +38,6 @@ class NotificationManager:
         
         # Vérifier si on peut afficher la notification
         if len(self._active_notifications) >= self._max_notifications:
-            logger.debug(f"Notification ignorée (limite atteinte): {message}")
             return  # Ignorer complètement la notification
         
         try:
@@ -54,8 +53,6 @@ class NotificationManager:
             }
             self._active_notifications.append(notification_info)
             
-            logger.debug(f"Notification affichée ({len(self._active_notifications)}/{self._max_notifications}): {message}")
-            
         except Exception as e:
             logger.error(f"Erreur affichage notification: {e}")
     
@@ -70,7 +67,6 @@ class NotificationManager:
     def reset_count(self) -> None:
         """Réinitialise le compteur de notifications."""
         self._active_notifications.clear()
-        logger.debug("Compteur de notifications réinitialisé")
     
     def get_count(self) -> int:
         """Retourne le nombre actuel de notifications affichées."""
@@ -91,7 +87,6 @@ class NotificationManager:
         if max_count < 1:
             max_count = 1
         self._max_notifications = max_count
-        logger.info(f"Limite de notifications définie à {max_count}")
 
 
 # Instance globale

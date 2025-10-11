@@ -3,7 +3,9 @@ Service de gestion de la messagerie en temps réel.
 """
 import asyncio
 import os
+import json
 from datetime import datetime
+from pathlib import Path
 from typing import List, Dict, Optional, Callable
 from telethon import events
 from telethon.tl.types import User, Chat, Channel
@@ -17,14 +19,69 @@ logger = get_logger()
 class MessagingService:
     """Service pour gérer la messagerie en temps réel."""
     
+    # Cache des conversations
+    _conversations_cache_file = "conversations_cache.json"
+    
+    @classmethod
+    def get_cache_file_path(cls) -> Path:
+        """Retourne le chemin du fichier de cache."""
+        return Path("temp") / cls._conversations_cache_file
+    
+    @classmethod
+    def load_conversations_cache(cls) -> dict:
+        """Charge le cache des conversations depuis le fichier."""
+        cache_file = cls.get_cache_file_path()
+        if cache_file.exists():
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.warning(f"Erreur lecture cache conversations: {e}")
+        return {}
+    
+    @classmethod
+    def save_conversations_cache(cls, conversations_by_account: dict) -> None:
+        """Sauvegarde le cache des conversations."""
+        try:
+            cache_file = cls.get_cache_file_path()
+            cache_file.parent.mkdir(exist_ok=True)
+            
+            # Convertir les datetime en strings pour JSON
+            cache_data = {}
+            for session_id, conversations in conversations_by_account.items():
+                cache_data[session_id] = []
+                for conv in conversations:
+                    conv_copy = conv.copy()
+                    if conv_copy.get('last_message_date') and hasattr(conv_copy['last_message_date'], 'isoformat'):
+                        conv_copy['last_message_date'] = conv_copy['last_message_date'].isoformat()
+                    cache_data[session_id].append(conv_copy)
+            
+            with open(cache_file, 'w', encoding='utf-8') as f:
+                json.dump(cache_data, f, ensure_ascii=False, indent=2)
+            
+        except Exception as e:
+            logger.error(f"Erreur sauvegarde cache conversations: {e}")
+    
+    @classmethod
+    def is_cache_valid(cls, max_age_minutes: int = 30) -> bool:
+        """Vérifie si le cache est valide (pas trop ancien)."""
+        cache_file = cls.get_cache_file_path()
+        if not cache_file.exists():
+            return False
+        
+        import time
+        age_minutes = (time.time() - cache_file.stat().st_mtime) / 60
+        return age_minutes < max_age_minutes
+    
     @staticmethod
-    async def get_conversations(account: TelegramAccount, limit: int = 30) -> List[Dict]:
+    async def get_conversations(account: TelegramAccount, limit: int = 30, include_groups: bool = False) -> List[Dict]:
         """
         Récupère les conversations récentes d'un compte.
         
         Args:
             account: Compte Telegram
             limit: Nombre maximum de conversations
+            include_groups: Si True, inclut les groupes et canaux. Si False, uniquement les users.
             
         Returns:
             List[Dict]: Liste des conversations avec dernier message
@@ -36,7 +93,11 @@ class MessagingService:
         try:
             conversations = []
             
-            async for dialog in account.client.iter_dialogs(limit=limit):
+            # Limite raisonnable pour éviter la surcharge
+            max_iter = limit * 3 if not include_groups else limit
+            dialog_count = 0
+            async for dialog in account.client.iter_dialogs(limit=max_iter):
+                dialog_count += 1
                 entity = dialog.entity
                 
                 # Déterminer le type d'entité
@@ -45,6 +106,10 @@ class MessagingService:
                     entity_type = "channel"
                 elif isinstance(entity, Chat):
                     entity_type = "group"
+                
+                # 🔒 Filtrer par type si nécessaire
+                if not include_groups and entity_type in ["channel", "group"]:
+                    continue
                 
                 # Récupérer le dernier message
                 last_message = dialog.message
@@ -91,9 +156,11 @@ class MessagingService:
                     last_message_date = last_message.date
                     last_message_from_me = last_message.out
                     
-                    # Normaliser la date pour éviter les problèmes de timezone
-                    if last_message_date and hasattr(last_message_date, 'tzinfo') and last_message_date.tzinfo is not None:
-                        last_message_date = last_message_date.replace(tzinfo=None)
+                    # 🕐 Convertir l'heure UTC en heure locale
+                    if last_message_date:
+                        if hasattr(last_message_date, 'tzinfo') and last_message_date.tzinfo is not None:
+                            last_message_date = last_message_date.astimezone().replace(tzinfo=None)
+                        # Sinon, on garde la date telle quelle
                 
                 # Télécharger la photo de profil si elle existe
                 profile_photo_path = None
@@ -105,10 +172,8 @@ class MessagingService:
                         
                         # Télécharger la photo de profil
                         profile_photo_path = await account.client.download_profile_photo(entity, photos_dir)
-                        if profile_photo_path:
-                            logger.debug(f"Photo de profil téléchargée: {profile_photo_path}")
                 except Exception as e:
-                    logger.debug(f"Pas de photo de profil pour {dialog.title}: {e}")
+                    pass
                 
                 conversation = {
                     "id": dialog.id,
@@ -127,8 +192,11 @@ class MessagingService:
                 }
                 
                 conversations.append(conversation)
+                
+                # Arrêter si on a assez de conversations
+                if len(conversations) >= limit:
+                    break
             
-            logger.info(f"Conversations récupérées: {len(conversations)}")
             return conversations
             
         except Exception as e:
@@ -209,10 +277,16 @@ class MessagingService:
                             logger.warning(f"Erreur téléchargement média: {e}")
                             media_data = None
                 
+                # 🕐 Convertir l'heure UTC en heure locale
+                if message.date.tzinfo is not None:
+                    local_date = message.date.astimezone().replace(tzinfo=None)
+                else:
+                    local_date = message.date
+                
                 msg_dict = {
                     "id": message.id,
                     "text": message_text,
-                    "date": message.date,
+                    "date": local_date,
                     "from_me": message.out,
                     "sender_id": sender_id,
                     "sender_name": sender_name,
@@ -231,7 +305,6 @@ class MessagingService:
             # On les inverse pour avoir l'ordre chronologique
             messages.reverse()
             
-            logger.info(f"Messages récupérés: {len(messages)}")
             return messages
             
         except Exception as e:
@@ -267,7 +340,6 @@ class MessagingService:
                 reply_to=reply_to
             )
             
-            logger.info(f"Message envoyé au chat {chat_id}")
             return True
             
         except Exception as e:
@@ -291,7 +363,6 @@ class MessagingService:
         
         try:
             await account.client.send_read_acknowledge(chat_id)
-            logger.info(f"Conversation {chat_id} marquée comme lue")
             return True
             
         except Exception as e:
@@ -348,8 +419,6 @@ class MessagingService:
                 
             except Exception as e:
                 logger.error(f"Erreur dans le gestionnaire de nouveaux messages: {e}")
-        
-        logger.info(f"Gestionnaire de nouveaux messages configuré pour {account.account_name}")
     
     @staticmethod
     async def search_conversations(
@@ -435,7 +504,5 @@ class MessagingService:
             return date
         
         all_conversations.sort(key=safe_date_sort, reverse=True)
-        
-        logger.info(f"Conversations fusionnées: {len(all_conversations)} (compte maître: {master_account_id})")
         
         return all_conversations

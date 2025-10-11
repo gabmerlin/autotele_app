@@ -47,6 +47,5 @@ def get_api_credentials() -> Tuple[int, str]:
         logger.error(f"Erreur chargement credentials: {e}")
     
     # 3. Valeurs par défaut
-    logger.info("Utilisation des credentials par défaut")
     return 21211112, "64342ccdb7588fe8648219265ff5f846"
 

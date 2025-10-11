@@ -19,16 +19,16 @@ class AutoTeleLogger:
         
         # Configuration du logger principal
         self.logger = logging.getLogger("AutoTele")
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.DEBUG)  # ✅ Activer DEBUG pour voir tous les logs
         
         # Handler pour fichier
         log_file = self.log_dir / f"autotele_{datetime.now().strftime('%Y%m%d')}.log"
         file_handler = logging.FileHandler(log_file, encoding='utf-8')
-        file_handler.setLevel(logging.INFO)
+        file_handler.setLevel(logging.DEBUG)  # ✅ Fichier DEBUG
         
-        # Handler pour console (afficher tous les logs INFO et plus)
+        # Handler pour console (afficher INFO et plus seulement)
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
+        console_handler.setLevel(logging.INFO)  # Console reste sur INFO pour ne pas polluer
         
         # Format pour fichier (détaillé)
         file_formatter = logging.Formatter(

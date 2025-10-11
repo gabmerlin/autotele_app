@@ -27,8 +27,7 @@ class DialogService:
             return []
         
         try:
-            dialogs = await account.get_dialogs()
-            logger.info(f"Dialogues récupérés: {len(dialogs)} groupes/canaux")
+            dialogs = await account.get_dialogs()            
             return dialogs
         except Exception as e:
             logger.error(f"Erreur récupération dialogues: {e}")

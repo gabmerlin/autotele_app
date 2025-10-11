@@ -1,19 +1,157 @@
 """
-Service de gestion des messages programmés.
+Service de gestion des messages programmés avec rate limiting global strict.
 """
 import asyncio
+import random
+import time
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional, Set
 from pathlib import Path
+from collections import deque
+from contextlib import asynccontextmanager
 
 from core.telegram.account import TelegramAccount
 from utils.logger import get_logger
 from utils.constants import (
-    TELEGRAM_MIN_DELAY_PER_CHAT,
-    TELEGRAM_MIN_DELAY_BETWEEN_MESSAGES
+    TELEGRAM_GLOBAL_RATE_LIMIT,
+    TELEGRAM_SAFETY_MARGIN
 )
 
 logger = get_logger()
+
+
+class GlobalRateLimiter:
+    """
+    Rate limiter global adaptatif avec attente non-bloquante.
+    S'adapte automatiquement après un FloodWait pour éviter les répétitions.
+    """
+    
+    def __init__(self):
+        self._lock = None
+        self._active_accounts = set()
+        self._last_request_time = 0.0
+        
+        # Limite globale fixe
+        self._global_rate_limit = TELEGRAM_GLOBAL_RATE_LIMIT * TELEGRAM_SAFETY_MARGIN
+        self._min_delay = 1.0 / self._global_rate_limit
+        
+        # 🧠 Système adaptatif par compte
+        self._account_flood_counts: Dict[str, int] = {}  # Nombre de floods
+        self._account_penalty_multipliers: Dict[str, float] = {}  # 1.0 = normal, 2.0 = 2× plus lent
+        self._account_successful_since_flood: Dict[str, int] = {}  # Compteur de succès
+        self._recovery_threshold = 50  # Nombre de succès avant récupération partielle
+        
+        logger.info(
+            f"🔒 Rate limiter adaptatif: {self._global_rate_limit:.1f} req/s "
+            f"(délai min: {self._min_delay*1000:.0f}ms) | "
+            f"🧠 Ajustement automatique après flood"
+        )
+    
+    def _get_lock(self):
+        """Crée ou récupère le lock global."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
+    
+    def register_account(self, account_id: str):
+        """Enregistre un compte comme actif."""
+        self._active_accounts.add(account_id)
+        
+        # Initialiser les compteurs adaptatifs pour ce compte
+        if account_id not in self._account_flood_counts:
+            self._account_flood_counts[account_id] = 0
+            self._account_penalty_multipliers[account_id] = 1.0
+            self._account_successful_since_flood[account_id] = 0
+        
+        nb = len(self._active_accounts)
+        rate_per_account = self._global_rate_limit / nb if nb > 0 else self._global_rate_limit
+        penalty = self._account_penalty_multipliers[account_id]
+        effective_rate = rate_per_account / penalty
+    
+    def unregister_account(self, account_id: str):
+        """Désenregistre un compte."""
+        self._active_accounts.discard(account_id)
+    
+    def report_flood(self, account_id: str):
+        """
+        Signale qu'un FloodWait a été détecté pour ce compte.
+        Ralentit automatiquement le débit pour éviter les répétitions.
+        """
+        self._account_flood_counts[account_id] = self._account_flood_counts.get(account_id, 0) + 1
+        old_penalty = self._account_penalty_multipliers.get(account_id, 1.0)
+        
+        # Augmenter la pénalité : multiplier par 1.5 à chaque flood (max 4.0)
+        new_penalty = min(old_penalty * 1.5, 4.0)
+        self._account_penalty_multipliers[account_id] = new_penalty
+        self._account_successful_since_flood[account_id] = 0
+        
+        new_rate = self._global_rate_limit / new_penalty
+        logger.warning(
+            f"🧠 FloodWait #{self._account_flood_counts[account_id]} détecté → "
+            f"Débit réduit: {new_rate:.1f} req/s (pénalité ×{new_penalty:.1f})"
+        )
+    
+    def report_success(self, account_id: str):
+        """
+        Signale un envoi réussi. Récupère progressivement le débit normal.
+        """
+        if account_id not in self._account_successful_since_flood:
+            return
+        
+        self._account_successful_since_flood[account_id] += 1
+        successes = self._account_successful_since_flood[account_id]
+        penalty = self._account_penalty_multipliers.get(account_id, 1.0)
+        
+        # Récupération progressive : tous les 50 succès, réduire la pénalité de 20%
+        if successes >= self._recovery_threshold and penalty > 1.0:
+            new_penalty = max(penalty * 0.8, 1.0)  # Réduire de 20%, min 1.0
+            self._account_penalty_multipliers[account_id] = new_penalty
+            self._account_successful_since_flood[account_id] = 0
+            
+    
+    async def _calculate_wait_time(self, account_id: str) -> float:
+        """Calcule le temps d'attente nécessaire avec pénalité adaptative (thread-safe)."""
+        async with self._get_lock():
+            # Appliquer le multiplicateur de pénalité pour ce compte
+            penalty = self._account_penalty_multipliers.get(account_id, 1.0)
+            adjusted_delay = self._min_delay * penalty
+            
+            now = time.time()
+            if self._last_request_time > 0:
+                elapsed = now - self._last_request_time
+                if elapsed < adjusted_delay:
+                    return adjusted_delay - elapsed
+            return 0.0
+    
+    @asynccontextmanager
+    async def request_slot(self, account_id: str):
+        """
+        Context manager pour acquérir un slot de requête avec ajustement adaptatif.
+        Les attentes se font EN DEHORS du lock pour ne pas bloquer les autres comptes.
+        
+        Usage:
+            async with rate_limiter.request_slot(account_id):
+                await account.schedule_message(...)
+        """
+        # ✅ Calculer et attendre EN DEHORS du lock (avec pénalité adaptative)
+        wait_time = await self._calculate_wait_time(account_id)
+        if wait_time > 0:
+            await asyncio.sleep(wait_time)
+        
+        # ✅ Lock très court juste pour marquer le slot
+        async with self._get_lock():
+            self._last_request_time = time.time()
+        
+        # ✅ L'envoi se fait en parallèle avec les autres comptes
+        try:
+            yield
+        finally:
+            # Mettre à jour le timestamp final (optionnel, déjà fait avant)
+            pass
+
+
+# Instance globale
+_rate_limiter = GlobalRateLimiter()
 
 
 class MessageService:
@@ -27,17 +165,11 @@ class MessageService:
         dates: List[datetime],
         file_path: Optional[str] = None,
         on_progress: Optional[callable] = None,
-        cancelled_flag: Optional[Dict] = None
+        cancelled_flag: Optional[Dict] = None,
+        task: Optional['SendingTask'] = None
     ) -> Tuple[int, int, Set[int]]:
         """
-        Envoie des messages programmés à plusieurs groupes sur plusieurs dates.
-        
-        Stratégie d'optimisation:
-        - Parcourt chaque créneau horaire
-        - Envoie le message à tous les groupes pour ce créneau
-        - Respecte les rate limits:
-            * 1 message/seconde/chat (prioritaire)
-            * 25 messages/seconde au total (0.04s entre chaque envoi)
+        Envoie des messages programmés avec rate limiting global strict.
         
         Args:
             account: Compte Telegram à utiliser
@@ -45,8 +177,9 @@ class MessageService:
             message: Message à envoyer
             dates: Liste des dates de planification
             file_path: Chemin du fichier à joindre (optionnel)
-            on_progress: Callback pour suivre la progression (sent, total, skipped)
+            on_progress: Callback pour suivre la progression
             cancelled_flag: Dict avec une clé 'value' pour annuler l'envoi
+            task: Tâche d'envoi (optionnel, pour afficher les attentes FloodWait)
             
         Returns:
             Tuple[int, int, Set[int]]: (nb_envoyés, nb_skipped, groupes_en_erreur)
@@ -54,29 +187,73 @@ class MessageService:
         if not account.is_connected:
             raise ValueError("Le compte n'est pas connecté")
         
-        total_groups = len(group_ids)
-        total_dates = len(dates)
-        total = total_groups * total_dates
-        sent = 0
-        skipped = 0
-        failed_groups: Set[int] = set()
+        account_id = account.session_id
+        _rate_limiter.register_account(account_id)
         
-        # Tracker des derniers envois
-        last_send_time: Dict[int, float] = {}
-        last_global_send = 0.0
+        # ✅ Démarrer le chronomètre pour les métriques de performance
+        start_time = time.time()
         
-        logger.info(f"Début envoi: {total} messages sur {total_groups} groupes et {total_dates} créneaux")
-        
-        # Parcourir chaque créneau horaire
-        for date_idx, dt in enumerate(dates, 1):
-            # Vérifier l'annulation
-            if cancelled_flag and cancelled_flag.get('value'):
-                logger.info(f"Envoi annulé par l'utilisateur après {sent} messages")
-                break
+        try:
+            total_groups = len(group_ids)
+            total_dates = len(dates)
+            initial_total = total_groups * total_dates
+            total = initial_total
+            sent = 0
+            skipped = 0
+            failed_groups: Set[int] = set()
             
-            # Envoyer ce créneau à tous les groupes
-            for group_idx, group_id in enumerate(group_ids, 1):
-                # Vérifier l'annulation
+            # ✅ Pré-remplir le cache d'entités pour éviter les cache miss pendant l'envoi
+            cache_filled = 0
+            for group_id in group_ids:
+                if group_id not in account._entity_cache:
+                    try:
+                        entity = await account.client.get_input_entity(group_id)
+                        account._entity_cache[group_id] = entity
+                        cache_filled += 1
+                        # Petit délai pour ne pas surcharger l'API
+                        if cache_filled % 10 == 0:
+                            await asyncio.sleep(0.1)
+                    except Exception as e:
+                        pass
+            
+            # Upload du fichier UNE SEULE FOIS si nécessaire
+            uploaded_file = None
+            if file_path and Path(file_path).exists():
+                try:
+                    async with _rate_limiter.request_slot(account_id):
+                        import mimetypes
+                        from telethon.tl.types import (
+                            InputMediaUploadedDocument, 
+                            DocumentAttributeFilename
+                        )
+                        
+                        # Upload du fichier
+                        file_input = await account.client.upload_file(file_path)
+                        
+                        # Déterminer le type MIME
+                        mime_type = mimetypes.guess_type(file_path)[0] or 'application/octet-stream'
+                        
+                        # Créer les attributs (nom du fichier)
+                        file_name = Path(file_path).name
+                        attributes = [DocumentAttributeFilename(file_name=file_name)]
+                        
+                        # Créer le média uploadé correctement
+                        uploaded_file = InputMediaUploadedDocument(
+                            file=file_input,
+                            mime_type=mime_type,
+                            attributes=attributes
+                        )
+                except Exception as e:
+                    logger.warning(f"⚠️ Échec upload: {e}")
+                    uploaded_file = None
+            
+            # ✅ Créer toutes les paires (date, groupe) et les randomiser
+            # Cela évite la détection de pattern de spam par Telegram
+            schedule_pairs = [(dt, group_id) for dt in dates for group_id in group_ids]
+            random.shuffle(schedule_pairs)
+            
+            # Parcourir les paires dans l'ordre randomisé
+            for idx, (dt, group_id) in enumerate(schedule_pairs, 1):
                 if cancelled_flag and cancelled_flag.get('value'):
                     break
                 
@@ -88,84 +265,72 @@ class MessageService:
                     continue
                 
                 try:
-                    # PROTECTION: Calculer le délai maximum à respecter
-                    wait_time = 0.0
-                    
-                    # Protection 1: Rate limit par chat (2 sec/chat)
-                    if group_id in last_send_time:
-                        elapsed_chat = asyncio.get_event_loop().time() - last_send_time[group_id]
-                        if elapsed_chat < TELEGRAM_MIN_DELAY_PER_CHAT:
-                            wait_time = max(wait_time, TELEGRAM_MIN_DELAY_PER_CHAT - elapsed_chat)
-                    
-                    # Protection 2: Rate limit global (25 msg/sec = 0.04s entre envois)
-                    if last_global_send > 0:
-                        elapsed_global = asyncio.get_event_loop().time() - last_global_send
-                        if elapsed_global < TELEGRAM_MIN_DELAY_BETWEEN_MESSAGES:
-                            wait_time = max(wait_time, TELEGRAM_MIN_DELAY_BETWEEN_MESSAGES - elapsed_global)
-                    
-                    # Attendre si nécessaire (une seule fois, le max des deux)
-                    if wait_time > 0:
-                        await asyncio.sleep(wait_time)
-                    
-                    # Envoyer le message
-                    success, error = await account.schedule_message(
-                        group_id,
-                        message,
-                        dt,
-                        file_path
-                    )
-                    
-                    # IMPORTANT: Toujours enregistrer l'heure, même en cas d'échec
-                    # pour éviter les envois trop rapides après une erreur
-                    current_time = asyncio.get_event_loop().time()
-                    last_send_time[group_id] = current_time
-                    last_global_send = current_time
+                    # Acquérir le slot et envoyer (atomique)
+                    async with _rate_limiter.request_slot(account_id):
+                        # ✅ Si fichier uploadé, l'utiliser ; sinon utiliser le chemin direct
+                        success, error = await account.schedule_message(
+                            group_id,
+                            message,
+                            dt,
+                            file_path=None if uploaded_file else file_path,
+                            uploaded_file=uploaded_file
+                        )
+                    # ✅ Le timestamp est automatiquement enregistré à la sortie du context manager
                     
                     if success:
                         sent += 1
+                        # 🧠 Signaler le succès pour récupération adaptative
+                        _rate_limiter.report_success(account_id)
                         if on_progress:
                             on_progress(sent, total, skipped, failed_groups)
                     else:
                         # Gérer les erreurs
                         if MessageService._is_permission_error(error):
-                            # Exclure ce groupe définitivement
-                            failed_groups.add(group_id)
+                            if group_id not in failed_groups:
+                                failed_groups.add(group_id)
+                                # ✅ Calculer combien de messages restants pour ce groupe
+                                remaining_for_group = sum(1 for _, gid in schedule_pairs[idx:] if gid == group_id)
+                                total -= remaining_for_group
+                                logger.warning(
+                                    f"Groupe {group_id} exclu: {error} ({remaining_for_group} msg restants retirés)"
+                                )
                             skipped += 1
-                            logger.warning(f"Groupe {group_id} exclu: {error}")
                         elif MessageService._is_flood_error(error):
-                            # Attendre le temps demandé par Telegram
+                            # 🧠 Signaler le flood pour ajustement adaptatif
+                            _rate_limiter.report_flood(account_id)
+                            
+                            # Flood: attendre et réessayer
                             wait_time = MessageService._extract_wait_time(error)
-                            logger.warning(f"Flood limit détecté: attente de {wait_time}s...")
+                            logger.warning(f"🚨 Flood: attente {wait_time}s...")
+                            
+                            # ⏰ Signaler l'attente à la tâche (pour affichage UI)
+                            if task:
+                                task.set_waiting(wait_time + 2)  # +2s marge de sécurité
+                            
                             await asyncio.sleep(wait_time)
                             
-                            # Mettre à jour les timers pour le délai respecté
-                            current_time = asyncio.get_event_loop().time()
-                            last_send_time[group_id] = current_time
-                            last_global_send = current_time
+                            # Réessayer avec marge de sécurité supplémentaire
+                            await asyncio.sleep(2.0)  # +2s de sécurité
                             
-                            # Réessayer UNE SEULE fois
-                            success, retry_error = await account.schedule_message(
-                                group_id,
-                                message,
-                                dt,
-                                file_path
-                            )
+                            # ✅ Effacer l'attente (reprise)
+                            if task:
+                                task.clear_waiting()
                             
-                            # Enregistrer à nouveau l'heure après le réessai
-                            current_time = asyncio.get_event_loop().time()
-                            last_send_time[group_id] = current_time
-                            last_global_send = current_time
+                            async with _rate_limiter.request_slot(account_id):
+                                success, retry_error = await account.schedule_message(
+                                    group_id, message, dt, 
+                                    file_path=None if uploaded_file else file_path,
+                                    uploaded_file=uploaded_file
+                                )
                             
                             if success:
                                 sent += 1
-                                logger.info(f"✓ Réessai réussi pour groupe {group_id}")
+                                _rate_limiter.report_success(account_id)
                             else:
-                                # Si ça échoue encore, exclure
                                 failed_groups.add(group_id)
                                 skipped += 1
-                                logger.error(f"Réessai échoué pour groupe {group_id}: {retry_error}")
+                                logger.error(f"❌ Réessai échoué: {retry_error}")
                         else:
-                            # Autre erreur : pas de réessai
                             failed_groups.add(group_id)
                             skipped += 1
                         
@@ -173,49 +338,69 @@ class MessageService:
                             on_progress(sent, total, skipped, failed_groups)
                     
                 except Exception as e:
-                    logger.error(f"Erreur inattendue pour groupe {group_id}: {e}")
+                    logger.error(f"Erreur inattendue {group_id}: {e}")
                     failed_groups.add(group_id)
                     skipped += 1
-                    
                     if on_progress:
                         on_progress(sent, total, skipped, failed_groups)
-        
-        logger.info(f"Envoi terminé: {sent} envoyés, {skipped} skipped, {len(failed_groups)} groupes en erreur")
-        return sent, skipped, failed_groups
+            
+            # ✅ Calculer les métriques de performance
+            elapsed_time = time.time() - start_time
+            messages_per_second = sent / elapsed_time if elapsed_time > 0 else 0
+            success_rate = (sent / initial_total * 100) if initial_total > 0 else 0
+            
+            return sent, skipped, failed_groups
+            
+        finally:
+            _rate_limiter.unregister_account(account_id)
     
     @staticmethod
     def _is_permission_error(error: str) -> bool:
         """Vérifie si c'est une erreur de permission."""
         error_lower = error.lower()
         return any(x in error_lower for x in [
-            "can't write",
-            "topic_closed",
-            "chat_write_forbidden",
-            "permission"
+            "can't write", "topic_closed", "chat_write_forbidden", "permission"
         ])
     
     @staticmethod
     def _is_flood_error(error: str) -> bool:
-        """Vérifie si c'est une erreur de flood limit."""
-        return 'wait' in error.lower() and 'seconds' in error.lower()
+        """Vérifie si c'est une erreur de flood limit (français et anglais)."""
+        error_lower = error.lower()
+        # Détection anglais : "wait X seconds"
+        english_flood = 'wait' in error_lower and 'seconds' in error_lower
+        # Détection français : "attendez X secondes" ou "rate limit"
+        french_flood = 'attendez' in error_lower and 'secondes' in error_lower
+        rate_limit = 'rate limit' in error_lower
+        
+        return english_flood or french_flood or rate_limit
     
     @staticmethod
     def _extract_wait_time(error: str) -> int:
-        """Extrait le temps d'attente d'une erreur de flood."""
+        """Extrait le temps d'attente d'une erreur de flood (français et anglais)."""
         import re
-        match = re.search(r'(\d+)\s*seconds', error.lower())
+        error_lower = error.lower()
+        
+        # Chercher en anglais : "wait 236 seconds"
+        match = re.search(r'wait\s+(\d+)\s*seconds?', error_lower)
         if match:
-            return int(match.group(1)) + 5  # Ajouter 5s de marge
-        return 60  # Valeur par défaut
+            return int(match.group(1)) + 5
+        
+        # Chercher format alternatif anglais : "236 seconds"
+        match = re.search(r'(\d+)\s*seconds?', error_lower)
+        if match:
+            return int(match.group(1)) + 5
+        
+        # Chercher en français : "attendez 236 secondes"
+        match = re.search(r'attendez\s+(\d+)\s*secondes?', error_lower)
+        if match:
+            return int(match.group(1)) + 5
+        
+        # Si rien trouvé, défaut à 60 secondes
+        return 60
     
     @staticmethod
     def cleanup_temp_file(file_path: Optional[str]) -> None:
-        """
-        Nettoie un fichier temporaire.
-        
-        Args:
-            file_path: Chemin du fichier à supprimer
-        """
+        """Nettoie un fichier temporaire."""
         if not file_path:
             return
         
@@ -223,7 +408,5 @@ class MessageService:
             path = Path(file_path)
             if path.exists():
                 path.unlink()
-                logger.info(f"Fichier temporaire nettoyé: {file_path}")
         except Exception as e:
-            logger.error(f"Erreur nettoyage fichier temporaire: {e}")
-
+            logger.error(f"Erreur nettoyage fichier: {e}")

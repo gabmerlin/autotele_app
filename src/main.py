@@ -34,7 +34,6 @@ def maximize_window_on_startup() -> None:
                     window_title = win32gui.GetWindowText(hwnd)
                     if APP_NAME in window_title:
                         win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
-                        logger.info("Fenêtre maximisée")
                 return True
             
             win32gui.EnumWindows(enum_windows_callback, None)
@@ -54,7 +53,6 @@ def cleanup_temp_files() -> None:
                 if file.is_file():
                     try:
                         file.unlink()
-                        logger.info(f"Fichier temporaire supprimé: {file.name}")
                     except Exception as e:
                         logger.warning(f"Impossible de supprimer {file.name}: {e}")
     except Exception as e:

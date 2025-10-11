@@ -46,6 +46,7 @@ class TelegramAccount:
         self.client: Optional[TelegramClient] = None
         self.is_connected = False
         self.session_manager = SessionManager()
+        self._entity_cache: Dict[int, any] = {}  # ✅ Cache des entités pour éviter get_input_entity
     
     async def connect(self, session_file: Optional[str] = None) -> bool:
         """
@@ -83,7 +84,6 @@ class TelegramAccount:
         if self.client:
             await self.client.disconnect()
             self.is_connected = False
-            logger.info(f"Compte déconnecté: {self.account_name}")
     
     async def send_code_request(self) -> bool:
         """
@@ -101,7 +101,6 @@ class TelegramAccount:
                 await self.client.connect()
             
             await self.client.send_code_request(self.phone)
-            logger.info(f"Code de vérification envoyé à {self.phone}")
             return True
             
         except Exception as e:
@@ -134,7 +133,6 @@ class TelegramAccount:
             
             await self.client.sign_in(self.phone, code)
             self.is_connected = True
-            logger.info(f"Authentification réussie: {self.account_name}")
             return True, ""
             
         except SessionPasswordNeededError:
@@ -143,7 +141,6 @@ class TelegramAccount:
                 try:
                     await self.client.sign_in(password=password)
                     self.is_connected = True
-                    logger.info(f"Authentification 2FA réussie: {self.account_name}")
                     return True, ""
                 except Exception as e:
                     return False, f"Mot de passe 2FA incorrect: {e}"
@@ -174,6 +171,16 @@ class TelegramAccount:
                 
                 # Récupérer uniquement les groupes et canaux
                 if isinstance(entity, (Channel, Chat)):
+                    # ✅ CACHER l'entité avec TOUTES les formes d'ID possibles
+                    # Les channels/megagroupes ont des IDs avec le préfixe -100
+                    entity_id = entity.id
+                    self._entity_cache[entity_id] = entity  # ID positif
+                    
+                    # Pour les channels/megagroupes, cacher aussi avec l'ID négatif
+                    if isinstance(entity, Channel) and (entity.megagroup or entity.broadcast):
+                        negative_id = -1000000000000 - entity_id  # Format -100XXXXXXXXX
+                        self._entity_cache[negative_id] = entity
+                    
                     dialog_info = {
                         "id": entity.id,
                         "title": dialog.title,
@@ -224,7 +231,8 @@ class TelegramAccount:
         chat_id: int,
         message: str,
         schedule_date: datetime,
-        file_path: Optional[str] = None
+        file_path: Optional[str] = None,
+        uploaded_file = None
     ) -> Tuple[bool, str]:
         """
         Planifie un message dans un groupe/canal.
@@ -233,7 +241,8 @@ class TelegramAccount:
             chat_id: ID du chat
             message: Message à envoyer
             schedule_date: Date et heure de planification
-            file_path: Chemin du fichier à joindre (optionnel)
+            file_path: Chemin du fichier à joindre (optionnel, legacy)
+            uploaded_file: Fichier déjà uploadé (optimisé)
             
         Returns:
             Tuple[bool, str]: (success, error_message)
@@ -245,6 +254,13 @@ class TelegramAccount:
             if isinstance(chat_id, str):
                 chat_id = int(chat_id)
             
+            # ✅ UTILISER l'entité cachée pour éviter get_input_entity
+            entity = self._entity_cache.get(chat_id)
+            if entity is None:
+                # Si pas en cache, résoudre UNE FOIS (coûte 1 API call)
+                entity = await self.client.get_input_entity(chat_id)
+                self._entity_cache[chat_id] = entity
+            
             # Vérifier si c'est un envoi immédiat ou programmé
             now = datetime.now()
             time_diff = (schedule_date - now).total_seconds()
@@ -252,20 +268,43 @@ class TelegramAccount:
             
             if is_immediate:
                 # Envoi immédiat
-                if file_path and Path(file_path).exists():
-                    await self.client.send_file(chat_id, file_path, caption=message)
+                if uploaded_file:
+                    await self.client.send_message(entity, message, file=uploaded_file)
+                elif file_path and Path(file_path).exists():
+                    await self.client.send_file(entity, file_path, caption=message)
                 else:
-                    await self.client.send_message(chat_id, message)
+                    await self.client.send_message(entity, message)
             else:
                 # Envoi programmé
-                if file_path and Path(file_path).exists():
+                if uploaded_file:
+                    # Utiliser le fichier déjà uploadé (optimisé)
+                    await self.client.send_message(
+                        entity,
+                        message,
+                        file=uploaded_file,
+                        schedule=schedule_date
+                    )
+                elif file_path and Path(file_path).exists():
+                    # Upload sur place (legacy, moins optimisé)
                     try:
-                        # Pour les messages programmés avec fichiers, utiliser send_message avec document
-                        from telethon.tl.types import InputMediaDocument
+                        import mimetypes
+                        from telethon.tl.types import (
+                            InputMediaUploadedDocument,
+                            DocumentAttributeFilename
+                        )
+                        
                         file_input = await self.client.upload_file(file_path)
-                        media = InputMediaDocument(file_input)
+                        mime_type = mimetypes.guess_type(file_path)[0] or 'application/octet-stream'
+                        file_name = Path(file_path).name
+                        attributes = [DocumentAttributeFilename(file_name=file_name)]
+                        
+                        media = InputMediaUploadedDocument(
+                            file=file_input,
+                            mime_type=mime_type,
+                            attributes=attributes
+                        )
                         await self.client.send_message(
-                            chat_id, 
+                            entity, 
                             message, 
                             file=media,
                             schedule=schedule_date
@@ -273,9 +312,10 @@ class TelegramAccount:
                     except Exception as file_error:
                         # Si l'envoi avec fichier échoue, essayer sans fichier
                         logger.warning(f"Échec envoi fichier programmé, envoi sans fichier: {file_error}")
-                        await self.client.send_message(chat_id, message, schedule=schedule_date)
+                        await self.client.send_message(entity, message, schedule=schedule_date)
                 else:
-                    await self.client.send_message(chat_id, message, schedule=schedule_date)
+                    # Sans fichier
+                    await self.client.send_message(entity, message, schedule=schedule_date)
             
             return True, ""
             
@@ -325,8 +365,7 @@ class TelegramAccount:
         try:
             all_scheduled = []
             dialogs = await self.get_dialogs()
-            
-            logger.info(f"Scan complet de {len(dialogs)} groupe(s)...")
+            all_scheduled = []
             
             for i, dialog in enumerate(dialogs):
                 chat_id = dialog['id']
@@ -352,7 +391,6 @@ class TelegramAccount:
                                 all_scheduled.append(scheduled_info)
                     except Exception as api_error:
                         # Fallback : iter_messages
-                        logger.debug(f"API bas niveau échouée pour {chat_title}, utilisation de iter_messages: {api_error}")
                         async for msg in self.client.iter_messages(chat_id, scheduled=True):
                             scheduled_info = {
                                 "message_id": msg.id,
@@ -370,14 +408,9 @@ class TelegramAccount:
                     await asyncio.sleep(0.05)
                     
                 except Exception as e:
-                    logger.debug(f"Erreur {chat_title}: {str(e)[:80]}")
                     continue
-                
-                if (i + 1) % 10 == 0:
-                    logger.info(f"Progression: {i + 1}/{len(dialogs)} groupes - {len(all_scheduled)} messages")
             
             all_scheduled.sort(key=lambda x: x['date'])
-            logger.info(f"Scan terminé: {len(all_scheduled)} message(s) trouvé(s)")
             return all_scheduled
             
         except Exception as e:
@@ -409,14 +442,12 @@ class TelegramAccount:
             if message_ids:
                 # Supprimer des messages spécifiques
                 await self.client(DeleteScheduledMessagesRequest(peer=chat_id, id=message_ids))
-                logger.info(f"🗑️ {len(message_ids)} message(s) supprimé(s)")
             else:
                 # Supprimer tous les messages
                 scheduled_messages = await self.client.get_messages(chat_id, scheduled=True, limit=TELEGRAM_MAX_SCHEDULED_MESSAGES_FETCH)
                 if scheduled_messages:
                     msg_ids = [msg.id for msg in scheduled_messages]
                     await self.client(DeleteScheduledMessagesRequest(peer=chat_id, id=msg_ids))
-                    logger.info(f"🗑️ {len(msg_ids)} message(s) supprimé(s)")
             
             return True, ""
             
