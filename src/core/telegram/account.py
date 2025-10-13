@@ -1,25 +1,33 @@
-"""
-Classe représentant un compte Telegram connecté.
-"""
+"""Classe représentant un compte Telegram connecté."""
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple, List, Dict
+from typing import Dict, List, Optional, Tuple
 
 from telethon import TelegramClient
+from telethon.errors import (
+    FloodWaitError,
+    PhoneCodeInvalidError,
+    SessionPasswordNeededError
+)
+from telethon.tl.functions.messages import (
+    DeleteScheduledMessagesRequest,
+    GetScheduledHistoryRequest
+)
 from telethon.tl.types import Channel, Chat
-from telethon.tl.functions.messages import GetScheduledHistoryRequest, DeleteScheduledMessagesRequest
-from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, FloodWaitError
 
 from core.session_manager import SessionManager
+from utils.constants import (
+    TELEGRAM_MAX_SCHEDULED_MESSAGES_FETCH,
+    TELEGRAM_MIN_DELAY_PER_CHAT
+)
 from utils.logger import get_logger
-from utils.constants import TELEGRAM_MIN_DELAY_PER_CHAT, TELEGRAM_MAX_SCHEDULED_MESSAGES_FETCH
 
 logger = get_logger()
 
 
 class TelegramAccount:
-    """Représente un compte Telegram connecté."""
-    
+    """Représente un compte Telegram connecté avec ses fonctionnalités."""
+
     def __init__(
         self,
         session_id: str,
@@ -30,13 +38,13 @@ class TelegramAccount:
     ):
         """
         Initialise un compte Telegram.
-        
+
         Args:
-            session_id: ID unique de la session
-            phone: Numéro de téléphone
-            api_id: ID de l'API Telegram
-            api_hash: Hash de l'API Telegram
-            account_name: Nom du compte (optionnel)
+            session_id: ID unique de la session.
+            phone: Numéro de téléphone.
+            api_id: ID de l'API Telegram.
+            api_hash: Hash de l'API Telegram.
+            account_name: Nom du compte (optionnel).
         """
         self.session_id = session_id
         self.phone = phone
@@ -46,39 +54,50 @@ class TelegramAccount:
         self.client: Optional[TelegramClient] = None
         self.is_connected = False
         self.session_manager = SessionManager()
-        self._entity_cache: Dict[int, any] = {}  # ✅ Cache des entités pour éviter get_input_entity
+        # Cache des entités pour éviter get_input_entity
+        self._entity_cache: Dict[int, any] = {}
     
     async def connect(self, session_file: Optional[str] = None) -> bool:
         """
         Connecte le compte Telegram.
-        
+
         Args:
-            session_file: Chemin du fichier de session (optionnel)
-            
+            session_file: Chemin du fichier de session (optionnel).
+
         Returns:
-            bool: True si la connexion a réussi
+            bool: True si la connexion a réussi.
         """
         try:
             if session_file is None:
-                session_file = str(self.session_manager.get_session_file_path(self.session_id))
-            
-            self.client = TelegramClient(session_file, self.api_id, self.api_hash)
+                # Utiliser get_session_for_client (déchiffre automatiquement)
+                session_file = (
+                    self.session_manager.get_session_for_client(
+                        self.session_id
+                    )
+                )
+
+            self.client = TelegramClient(
+                session_file,
+                self.api_id,
+                self.api_hash
+            )
             await self.client.connect()
-            
+
             if not await self.client.is_user_authorized():
                 self.is_connected = False
                 return False
-            
+
             self.is_connected = True
             self.session_manager.update_last_used(self.session_id)
-            logger.info(f"Compte connecté: {self.account_name}")
             return True
-            
+
         except Exception as e:
-            logger.error(f"Erreur connexion compte {self.account_name}: {e}")
+            logger.error(
+                f"Erreur connexion compte {self.account_name}: {e}"
+            )
             self.is_connected = False
             return False
-    
+
     async def disconnect(self) -> None:
         """Déconnecte le compte."""
         if self.client:
@@ -171,7 +190,7 @@ class TelegramAccount:
                 
                 # Récupérer uniquement les groupes et canaux
                 if isinstance(entity, (Channel, Chat)):
-                    # ✅ CACHER l'entité avec TOUTES les formes d'ID possibles
+                    # CACHER l'entité avec TOUTES les formes d'ID possibles
                     # Les channels/megagroupes ont des IDs avec le préfixe -100
                     entity_id = entity.id
                     self._entity_cache[entity_id] = entity  # ID positif
@@ -254,7 +273,7 @@ class TelegramAccount:
             if isinstance(chat_id, str):
                 chat_id = int(chat_id)
             
-            # ✅ UTILISER l'entité cachée pour éviter get_input_entity
+            # UTILISER l'entité cachée pour éviter get_input_entity
             entity = self._entity_cache.get(chat_id)
             if entity is None:
                 # Si pas en cache, résoudre UNE FOIS (coûte 1 API call)
@@ -346,11 +365,101 @@ class TelegramAccount:
                 "first_name": me.first_name,
                 "last_name": me.last_name,
                 "username": me.username,
-                "phone": me.phone
+                "phone": me.phone,
+                "full_name": f"{me.first_name or ''} {me.last_name or ''}".strip() or me.phone
             }
         except Exception as e:
             logger.error(f"Erreur récupération infos compte: {e}")
             return None
+    
+    async def get_profile_photo_path(self) -> Optional[str]:
+        """
+        Télécharge et retourne le chemin de la photo de profil.
+        
+        Returns:
+            Optional[str]: Chemin de la photo ou None
+        """
+        if not self.is_connected:
+            return None
+        
+        try:
+            from utils.paths import get_temp_dir
+            me = await self.client.get_me()
+            
+            # Créer le dossier photos s'il n'existe pas
+            photos_dir = get_temp_dir() / "photos"
+            photos_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Chemin de la photo
+            photo_path = photos_dir / f"profile_{self.session_id}.jpg"
+            
+            # Télécharger la photo de profil
+            if me.photo:
+                await self.client.download_profile_photo(me, file=str(photo_path))
+                return str(photo_path)
+            
+            return None
+        except Exception as e:
+            logger.error(f"Erreur récupération photo profil: {e}")
+            return None
+    
+    async def update_profile_name(self, first_name: str, last_name: str = "") -> Tuple[bool, str]:
+        """
+        Met à jour le nom du profil Telegram (visible par les autres).
+        
+        Args:
+            first_name: Prénom
+            last_name: Nom de famille (optionnel)
+            
+        Returns:
+            Tuple[bool, str]: (success, error_message)
+        """
+        if not self.is_connected:
+            return False, "Compte non connecté"
+        
+        try:
+            from telethon.tl.functions.account import UpdateProfileRequest
+            
+            await self.client(UpdateProfileRequest(
+                first_name=first_name,
+                last_name=last_name
+            ))
+            
+            return True, ""
+        except Exception as e:
+            error_msg = f"Erreur mise à jour nom: {e}"
+            logger.error(error_msg)
+            return False, error_msg
+    
+    async def update_profile_photo(self, file_path: str) -> Tuple[bool, str]:
+        """
+        Met à jour la photo de profil Telegram.
+        
+        Args:
+            file_path: Chemin du fichier photo
+            
+        Returns:
+            Tuple[bool, str]: (success, error_message)
+        """
+        if not self.is_connected:
+            return False, "Compte non connecté"
+        
+        try:
+            from telethon.tl.functions.photos import UploadProfilePhotoRequest
+            
+            # Uploader la photo
+            uploaded_file = await self.client.upload_file(file_path)
+            
+            # Définir comme photo de profil
+            await self.client(UploadProfilePhotoRequest(
+                file=uploaded_file
+            ))
+            
+            return True, ""
+        except Exception as e:
+            error_msg = f"Erreur mise à jour photo: {e}"
+            logger.error(error_msg)
+            return False, error_msg
     
     async def get_all_scheduled_messages(self) -> List[Dict]:
         """

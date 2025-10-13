@@ -1,5 +1,5 @@
 """
-Système de logs pour AutoTele
+Système de logs pour AutoTele avec anonymisation RGPD
 """
 import os
 import logging
@@ -8,6 +8,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict
 import json
+
+from utils.anonymizer import (
+    anonymize_phone,
+    anonymize_username,
+    sanitize_message_preview,
+    anonymize_group_ids
+)
 
 
 class AutoTeleLogger:
@@ -19,12 +26,12 @@ class AutoTeleLogger:
         
         # Configuration du logger principal
         self.logger = logging.getLogger("AutoTele")
-        self.logger.setLevel(logging.DEBUG)  # ✅ Activer DEBUG pour voir tous les logs
+        self.logger.setLevel(logging.DEBUG)  # Activer DEBUG pour voir tous les logs
         
         # Handler pour fichier
         log_file = self.log_dir / f"autotele_{datetime.now().strftime('%Y%m%d')}.log"
         file_handler = logging.FileHandler(log_file, encoding='utf-8')
-        file_handler.setLevel(logging.DEBUG)  # ✅ Fichier DEBUG
+        file_handler.setLevel(logging.DEBUG)  # Fichier DEBUG
         
         # Handler pour console (afficher INFO et plus seulement)
         console_handler = logging.StreamHandler()
@@ -75,12 +82,28 @@ class AutoTeleLogger:
     def log_scheduled_message(self, account: str, groups: List[str], 
                              message: str, schedule_time: datetime,
                              status: str = "scheduled"):
-        """Log un message planifié"""
+        """
+        Log un message planifié avec anonymisation RGPD.
+        
+        Les données sensibles sont anonymisées :
+        - Nom de compte : masqué
+        - Liste de groupes : remplacée par un compteur + échantillon hashé
+        - Message : remplacé par des statistiques (pas de contenu)
+        """
+        # Anonymiser les données sensibles
+        account_anon = anonymize_username(account)
+        message_info = sanitize_message_preview(message)
+        
+        # Convertir les IDs en int si nécessaire
+        group_ids = [int(g) if isinstance(g, str) else g for g in groups]
+        groups_sample = anonymize_group_ids(group_ids[:3])  # Échantillon de 3 premiers
+        
         entry = {
             "timestamp": datetime.now().isoformat(),
-            "account": account,
-            "groups": groups,
-            "message_preview": message[:100],
+            "account": account_anon,  # Anonymisé
+            "groups_count": len(groups),  # Compte uniquement
+            "groups_sample": groups_sample,  # IDs hashés
+            "message_info": message_info,  # Stats uniquement
             "schedule_time": schedule_time.isoformat(),
             "status": status
         }
@@ -89,14 +112,29 @@ class AutoTeleLogger:
         history.append(entry)
         self._write_history(history)
         
-        self.info(f"Message planifié - Compte: {account}, Groupes: {len(groups)}, Heure: {schedule_time}")
+        # Log console aussi anonymisé
+        self.info(
+            f"Message planifié - Compte: {account_anon}, "
+            f"Groupes: {len(groups)}, Heure: {schedule_time}"
+        )
     
     def log_send_result(self, task_id: str, group: str, success: bool, error: str = None):
-        """Log le résultat d'un envoi"""
+        """
+        Log le résultat d'un envoi avec anonymisation.
+        
+        Le nom du groupe est anonymisé pour la conformité RGPD.
+        """
+        from utils.anonymizer import hash_identifier
+        
+        # Anonymiser l'ID du groupe
+        group_anon = hash_identifier(group, "grp")
+        
         status = "success" if success else "failed"
-        message = f"Envoi {status} - Groupe: {group}"
+        message = f"Envoi {status} - Groupe: {group_anon}"  # Anonymisé
         if error:
-            message += f" - Erreur: {error}"
+            # Ne pas logger le message d'erreur complet s'il contient des données sensibles
+            error_type = error.split(':')[0] if ':' in error else "Erreur inconnue"
+            message += f" - Type: {error_type}"
         
         if success:
             self.info(message)

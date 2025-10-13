@@ -1,4 +1,7 @@
 {
+  "_comment": "Configuration AutoTele - SECRETS DANS .env, PAS ICI !",
+  "_security_warning": "Ne JAMAIS mettre de secrets (API keys, tokens, etc.) dans ce fichier. Utilisez .env à la place.",
+  
   "app": {
     "name": "AutoTele",
     "version": "1.0.0",
@@ -10,13 +13,10 @@
     "max_groups_warning": 50
   },
   "btcpay": {
-    "server_url": "",
-    "store_id": "",
-    "api_key": "",
-    "webhook_secret": "",
-    "subscription_price": 29.99,
-    "currency": "EUR",
-    "trial_days": 7,
+    "_note": "Les secrets BTCPay (server_url, store_id, api_key, webhook_secret) sont chargés depuis .env",
+    "subscription_price": 24.99,
+    "currency": "USD",
+    "trial_days": 0,
     "check_interval_hours": 24
   },
   "security": {

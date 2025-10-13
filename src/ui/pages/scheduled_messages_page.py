@@ -10,6 +10,7 @@ from ui.components.dialogs import ConfirmDialog
 from utils.logger import get_logger
 from utils.notification_manager import notify
 from utils.constants import ICON_SCHEDULED, ICON_REFRESH, MSG_NO_CONNECTED_ACCOUNT
+from ui.components.svg_icons import svg
 
 logger = get_logger()
 
@@ -34,7 +35,7 @@ class ScheduledMessagesPage:
         with ui.column().classes('w-full gap-6 p-8'):
             # En-tête
             with ui.row().classes('items-center gap-3 mb-2'):
-                ui.label(ICON_SCHEDULED).classes('text-4xl').style('color: var(--primary);')
+                ui.html(svg('schedule', 40, 'var(--primary)'))
                 ui.label('Messages Programmés').classes('text-3xl font-bold').style(
                     'color: var(--text-primary);'
                 )
@@ -59,16 +60,18 @@ class ScheduledMessagesPage:
                 )
                 
                 # Bouton pour scanner tous les comptes
-                ui.button(
-                    '🔍 Scanner tous les comptes',
+                with ui.button(
                     on_click=self.scan_all_accounts
-                ).props('outline').style('color: var(--accent);')
+                ).props('outline').style('color: var(--accent);'):
+                    with ui.row().classes('items-center gap-2'):
+                        ui.html(svg('search', 18, 'var(--accent)'))
+                        ui.label('Scanner tous les comptes')
             
             accounts = self.telegram_manager.list_accounts()
             connected = [acc for acc in accounts if acc.get('is_connected', False)]
             
             if not connected:
-                ui.label(f'✕ {MSG_NO_CONNECTED_ACCOUNT}').classes('font-semibold').style(
+                ui.label(f'{MSG_NO_CONNECTED_ACCOUNT}').classes('font-semibold').style(
                     'color: var(--danger);'
                 )
             else:
@@ -85,12 +88,12 @@ class ScheduledMessagesPage:
                         
                         if is_selected:
                             ui.button(
-                                f"● {account['account_name']}",
+                                f"{account['account_name']}",
                                 on_click=make_select(account['session_id'], account['account_name'])
                             ).classes('btn-primary')
                         else:
                             ui.button(
-                                f"○ {account['account_name']}",
+                                f"{account['account_name']}",
                                 on_click=make_select(account['session_id'], account['account_name'])
                             ).props('outline').style('color: var(--text-secondary);')
     
@@ -117,7 +120,8 @@ class ScheduledMessagesPage:
             self.messages_container.clear()
             with self.messages_container:
                 with ui.card().classes('w-full p-4 bg-red-50'):
-                    ui.label('❌ Compte introuvable').classes('text-red-700')
+                    ui.html(svg('error', 32, '#b91c1c'))
+                    ui.label('Compte introuvable').classes('text-red-700')
             return
         
         try:
@@ -131,7 +135,8 @@ class ScheduledMessagesPage:
             self.messages_container.clear()
             with self.messages_container:
                 with ui.card().classes('w-full p-4 bg-red-50'):
-                    ui.label('❌ Erreur lors du chargement').classes('text-red-700 font-bold')
+                    ui.html(svg('error', 32, '#b91c1c'))
+                    ui.label('Erreur lors du chargement').classes('text-red-700 font-bold')
                     ui.label(str(e)).classes('text-sm text-red-600')
     
     def display_messages(self) -> None:
@@ -155,7 +160,8 @@ class ScheduledMessagesPage:
                     )
                     
                     ui.button(
-                        '✕ Tout supprimer (TOUS)',
+                        'Tout supprimer (TOUS)',
+                        icon='delete_forever',
                         on_click=self._delete_all_everywhere
                     ).props('color=red')
                 
@@ -175,7 +181,7 @@ class ScheduledMessagesPage:
                     'background: #ecfdf5; border-left: 3px solid var(--success);'
                 ):
                     ui.label(
-                        f'✓ {len(self.current_messages)} message(s) programmé(s) dans {len(chats_dict)} groupe(s)'
+                        f'{len(self.current_messages)} message(s) programmé(s) dans {len(chats_dict)} groupe(s)'
                     ).classes('text-lg font-bold').style('color: #065f46;')
                 
                 # Afficher par groupe
@@ -184,7 +190,7 @@ class ScheduledMessagesPage:
             else:
                 # Aucun message
                 with ui.card().classes('w-full p-8 card-modern text-center'):
-                    ui.label('●').classes('text-5xl mb-3').style('color: var(--secondary); opacity: 0.3;')
+                    ui.html(svg('remove_circle', 60, 'var(--secondary)'))
                     ui.label('Aucun message programmé').classes('text-xl font-bold mb-2').style(
                         'color: var(--text-secondary);'
                     )
@@ -197,7 +203,9 @@ class ScheduledMessagesPage:
         with ui.card().classes('w-full p-5 mb-4 card-modern'):
             # En-tête du groupe
             with ui.row().classes('w-full items-center gap-3 mb-4'):
-                ui.label(f'● {chat_data["title"]}').classes('text-lg font-bold flex-1').style(
+                with ui.row().classes('items-center gap-2 flex-1'):
+                    ui.html(svg('chat', 18, 'var(--text-primary)'))
+                    ui.label(f'{chat_data["title"]}').classes('text-lg font-bold').style(
                     'color: var(--text-primary);'
                 )
                 ui.label(f'{len(chat_data["messages"])} message(s)').classes(
@@ -211,20 +219,20 @@ class ScheduledMessagesPage:
                                 notify('Suppression en cours...', type='info')
                                 success, error = await account.delete_scheduled_messages(cid, None)
                                 if success:
-                                    notify('✅ Messages supprimés !', type='positive')
+                                    notify('Messages supprimés !', type='positive')
                                     self.current_messages = [
                                         msg for msg in self.current_messages
                                         if msg['chat_id'] != cid
                                     ]
                                     self.display_messages()
                                 else:
-                                    notify(f'❌ Erreur: {error}', type='negative')
+                                    notify(f'Erreur: {error}', type='negative')
                             except Exception as e:
                                 logger.error(f"Erreur suppression: {e}")
-                                notify(f'❌ Erreur: {e}', type='negative')
+                                notify(f'Erreur: {e}', type='negative')
                         
                         confirm = ConfirmDialog(
-                            title=f'⚠️ Supprimer tous les messages de "{title}" ?',
+                            title=f'Supprimer tous les messages de "{title}" ?',
                             message='Cette action est irréversible.',
                             on_confirm=on_confirm,
                             confirm_text='Supprimer tout',
@@ -233,10 +241,12 @@ class ScheduledMessagesPage:
                         confirm.show()
                     return delete_all
                 
-                ui.button(
-                    '✕ Tout supprimer',
+                with ui.button(
                     on_click=make_delete_all(chat_id, chat_data['title'])
-                ).props('flat dense').style('color: var(--danger);')
+                ).props('flat dense').style('color: var(--danger);'):
+                    with ui.row().classes('items-center gap-1'):
+                        ui.html(svg('close', 16, 'var(--danger)'))
+                        ui.label('Tout supprimer')
             
             # Liste des messages
             with ui.column().classes('w-full gap-2'):
@@ -261,7 +271,9 @@ class ScheduledMessagesPage:
                     
                     # Média si présent
                     if msg['has_media']:
-                        ui.label(f'📎 {msg["media_type"]}').classes('text-xs').style(
+                        with ui.row().classes('items-center gap-1'):
+                            ui.html(svg('attach_file', 14, 'var(--text-secondary)'))
+                            ui.label(f'{msg["media_type"]}').classes('text-xs').style(
                             'color: var(--accent);'
                         )
                 
@@ -272,22 +284,23 @@ class ScheduledMessagesPage:
                             notify('Suppression...', type='info')
                             success, error = await account.delete_scheduled_messages(cid, [mid])
                             if success:
-                                notify('✅ Message supprimé', type='positive')
+                                notify('Message supprimé', type='positive')
                                 self.current_messages = [
                                     m for m in self.current_messages
                                     if not (m['chat_id'] == cid and m['message_id'] == mid)
                                 ]
                                 self.display_messages()
                             else:
-                                notify(f'❌ Erreur: {error}', type='negative')
+                                notify(f'Erreur: {error}', type='negative')
                         except Exception as e:
                             logger.error(f"Erreur suppression message: {e}")
-                            notify(f'❌ Erreur: {e}', type='negative')
+                            notify(f'Erreur: {e}', type='negative')
                     return delete
                 
-                ui.button('✕', on_click=make_delete(chat_id, msg['message_id'])).props(
-                    'flat dense'
-                ).style('color: var(--danger);')
+                with ui.button(on_click=make_delete(chat_id, msg['message_id'])).props(
+                    'flat dense round'
+                ).style('color: var(--danger);'):
+                    ui.html(svg('close', 18, '#ef4444'))
     
     def _delete_all_everywhere(self) -> None:
         """Supprime TOUS les messages de TOUS les groupes."""
@@ -297,7 +310,7 @@ class ScheduledMessagesPage:
                 if not account:
                     return
                 
-                notify('🗑️ Suppression de tous les messages...', type='warning')
+                notify('Suppression de tous les messages...', type='warning')
                 
                 # Grouper par chat
                 chats: Dict[int, List[int]] = {}
@@ -313,7 +326,7 @@ class ScheduledMessagesPage:
                     if success:
                         deleted_count += len(msg_ids)
                 
-                notify(f'✅ {deleted_count} message(s) supprimé(s) !', type='positive')
+                notify(f'{deleted_count} message(s) supprimé(s) !', type='positive')
                 
                 # Vider le cache
                 self.current_messages = []
@@ -321,13 +334,13 @@ class ScheduledMessagesPage:
                 
             except Exception as e:
                 logger.error(f"Erreur suppression totale: {e}")
-                notify(f'❌ Erreur: {e}', type='negative')
+                notify(f'Erreur: {e}', type='negative')
         
         confirm = ConfirmDialog(
-            title='⚠ ATTENTION',
+            title='ATTENTION',
             message=f'Supprimer TOUS les {len(self.current_messages)} messages programmés de TOUS les groupes ? Cette action est IRRÉVERSIBLE.',
             on_confirm=on_confirm,
-            confirm_text='✕ TOUT SUPPRIMER',
+            confirm_text='TOUT SUPPRIMER',
             is_danger=True
         )
         confirm.show()
@@ -338,7 +351,7 @@ class ScheduledMessagesPage:
         connected = [acc for acc in accounts if acc.get('is_connected', False)]
         
         if not connected:
-            notify('❌ Aucun compte connecté', type='negative')
+            notify('Aucun compte connecté', type='negative')
             return
         
         total_accounts = len(connected)
@@ -349,9 +362,11 @@ class ScheduledMessagesPage:
             with ui.card().classes('w-full p-8 card-modern'):
                 with ui.column().classes('w-full items-center gap-4'):
                     # Titre
-                    ui.label('🔍 Scan global en cours...').classes('text-2xl font-bold mb-2').style(
+                    with ui.row().classes('items-center gap-3 mb-2'):
+                        ui.html(svg('search', 32, '#1e40af'))
+                        ui.label('Scan global en cours...').classes('text-2xl font-bold').style(
                         'color: var(--primary);'
-                    )
+                        )
                     
                     # Label de progression
                     progress_label = ui.label('Préparation du scan...').classes('text-lg mb-4').style(
@@ -405,7 +420,7 @@ class ScheduledMessagesPage:
                 details_label.set_text(f'{idx} / {total_accounts} comptes scannés')
             
             # Progression à 100%
-            progress_label.set_text('✅ Scan terminé !')
+            progress_label.set_text('Scan terminé !')
             progress_bar.set_value(1.0)
             percentage_label.set_text('100%')
             details_label.set_text(f'{scanned} / {total_accounts} comptes scannés avec succès')
@@ -425,7 +440,8 @@ class ScheduledMessagesPage:
             self.messages_container.clear()
             with self.messages_container:
                 with ui.card().classes('w-full p-4 bg-red-50'):
-                    ui.label('❌ Erreur lors du scan global').classes('text-red-700 font-bold')
+                    ui.html(svg('error', 32, '#b91c1c'))
+                    ui.label('Erreur lors du scan global').classes('text-red-700 font-bold')
                     ui.label(str(e)).classes('text-sm text-red-600')
     
     def display_all_accounts_messages(self) -> None:
@@ -445,7 +461,8 @@ class ScheduledMessagesPage:
                     )
                     
                     ui.button(
-                        '✕ Tout supprimer (TOUS LES COMPTES)',
+                        'Tout supprimer (TOUS LES COMPTES)',
+                        icon='delete_forever',
                         on_click=self._delete_all_from_all_accounts
                     ).props('color=red')
                 
@@ -467,7 +484,7 @@ class ScheduledMessagesPage:
                     'background: #ecfdf5; border-left: 3px solid var(--success);'
                 ):
                     ui.label(
-                        f'✓ {len(self.current_messages)} message(s) programmé(s) sur {len(accounts_dict)} compte(s)'
+                        f'{len(self.current_messages)} message(s) programmé(s) sur {len(accounts_dict)} compte(s)'
                     ).classes('text-lg font-bold').style('color: #065f46;')
                 
                 # Afficher par compte
@@ -476,7 +493,7 @@ class ScheduledMessagesPage:
             else:
                 # Aucun message
                 with ui.card().classes('w-full p-8 card-modern text-center'):
-                    ui.label('●').classes('text-5xl mb-3').style('color: var(--secondary); opacity: 0.3;')
+                    ui.html(svg('remove_circle', 60, 'var(--secondary)'))
                     ui.label('Aucun message programmé').classes('text-xl font-bold mb-2').style(
                         'color: var(--text-secondary);'
                     )
@@ -489,7 +506,9 @@ class ScheduledMessagesPage:
         with ui.card().classes('w-full p-5 mb-4 card-modern'):
             # En-tête du compte
             with ui.row().classes('w-full items-center gap-3 mb-4'):
-                ui.label(f'👤 {account_data["name"]}').classes('text-xl font-bold flex-1').style(
+                with ui.row().classes('items-center gap-2 flex-1'):
+                    ui.html(svg('person', 22, 'var(--text-primary)'))
+                    ui.label(f'{account_data["name"]}').classes('text-xl font-bold').style(
                     'color: var(--primary);'
                 )
                 ui.label(f'{len(account_data["messages"])} message(s)').classes(
@@ -503,7 +522,7 @@ class ScheduledMessagesPage:
                                 notify(f'Suppression des messages de {acc_name}...', type='info')
                                 account = self.telegram_manager.get_account(acc_id)
                                 if not account:
-                                    notify('❌ Compte introuvable', type='negative')
+                                    notify('Compte introuvable', type='negative')
                                     return
                                 
                                 # Grouper par chat
@@ -520,17 +539,17 @@ class ScheduledMessagesPage:
                                     if success:
                                         deleted_count += len(msg_ids)
                                 
-                                notify(f'✅ {deleted_count} message(s) supprimé(s) de {acc_name} !', type='positive')
+                                notify(f'{deleted_count} message(s) supprimé(s) de {acc_name} !', type='positive')
                                 
                                 # Recharger
                                 await self.scan_all_accounts()
                                 
                             except Exception as e:
                                 logger.error(f"Erreur suppression compte: {e}")
-                                notify(f'❌ Erreur: {e}', type='negative')
+                                notify(f'Erreur: {e}', type='negative')
                         
                         confirm = ConfirmDialog(
-                            title=f'⚠️ Supprimer tous les messages de "{acc_name}" ?',
+                            title=f'Supprimer tous les messages de "{acc_name}" ?',
                             message='Cette action est irréversible.',
                             on_confirm=on_confirm,
                             confirm_text='Supprimer tout',
@@ -539,10 +558,12 @@ class ScheduledMessagesPage:
                         confirm.show()
                     return delete_account
                 
-                ui.button(
-                    '✕ Tout supprimer',
+                with ui.button(
                     on_click=make_delete_account(account_id, account_data['name'])
-                ).props('flat dense').style('color: var(--danger);')
+                ).props('flat dense').style('color: var(--danger);'):
+                    with ui.row().classes('items-center gap-1'):
+                        ui.html(svg('close', 16, 'var(--danger)'))
+                        ui.label('Tout supprimer')
             
             # Grouper par chat
             chats_dict: Dict[int, Dict] = {}
@@ -577,13 +598,13 @@ class ScheduledMessagesPage:
                             ui.label(text).classes('text-xs flex-1').style('color: var(--text-secondary);')
                             
                             if msg['has_media']:
-                                ui.label(f'📎').classes('text-xs')
+                                ui.html(svg('attach_file', 14, 'var(--text-secondary)'))
     
     def _delete_all_from_all_accounts(self) -> None:
         """Supprime TOUS les messages de TOUS les comptes."""
         async def on_confirm() -> None:
             try:
-                notify('🗑️ Suppression globale en cours...', type='warning')
+                notify('Suppression globale en cours...', type='warning')
                 
                 # Grouper par compte
                 accounts_dict: Dict[str, List] = {}
@@ -614,20 +635,20 @@ class ScheduledMessagesPage:
                         if success:
                             total_deleted += len(msg_ids)
                 
-                notify(f'✅ {total_deleted} message(s) supprimé(s) de tous les comptes !', type='positive')
+                notify(f'{total_deleted} message(s) supprimé(s) de tous les comptes !', type='positive')
                 
                 # Recharger
                 await self.scan_all_accounts()
                 
             except Exception as e:
                 logger.error(f"Erreur suppression globale: {e}")
-                notify(f'❌ Erreur: {e}', type='negative')
+                notify(f'Erreur: {e}', type='negative')
         
         confirm = ConfirmDialog(
-            title='⚠ DANGER - SUPPRESSION GLOBALE',
+            title='DANGER - SUPPRESSION GLOBALE',
             message=f'Supprimer TOUS les {len(self.current_messages)} messages de TOUS les comptes ? Cette action est IRRÉVERSIBLE et affectera TOUS vos comptes connectés.',
             on_confirm=on_confirm,
-            confirm_text='✕ SUPPRIMER ABSOLUMENT TOUT',
+            confirm_text='SUPPRIMER ABSOLUMENT TOUT',
             is_danger=True
         )
         confirm.show()

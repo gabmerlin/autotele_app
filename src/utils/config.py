@@ -4,7 +4,11 @@ Gestion de la configuration de l'application
 import json
 import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+from dotenv import load_dotenv
+
+# Charger les variables d'environnement depuis .env
+load_dotenv()
 
 
 class Config:
@@ -118,14 +122,84 @@ class Config:
         config[keys[-1]] = value
         self._save_config(self.config)
     
+    def get_supabase_config(self) -> Dict[str, str]:
+        """
+        Récupère la configuration Supabase depuis les variables d'environnement.
+        
+        SÉCURITÉ : Les secrets Supabase sont chargés depuis .env, 
+        PAS depuis app_config.json
+        
+        Returns:
+            Dict avec 'url' et 'anon_key'
+        
+        Raises:
+            ValueError: Si les variables d'environnement ne sont pas définies
+        """
+        url = os.getenv('SUPABASE_URL')
+        anon_key = os.getenv('SUPABASE_ANON_KEY')
+        
+        if not url or not anon_key:
+            raise ValueError(
+                "❌ Configuration Supabase manquante !\n\n"
+                "Veuillez définir dans votre fichier .env :\n"
+                "  SUPABASE_URL=votre_url\n"
+                "  SUPABASE_ANON_KEY=votre_cle\n\n"
+                "Consultez .env.example pour un modèle"
+            )
+        
+        return {
+            'url': url,
+            'anon_key': anon_key
+        }
+    
     def get_btcpay_config(self) -> Dict[str, Any]:
-        """Récupère la configuration BTCPay"""
-        return self.config.get("btcpay", {})
+        """
+        Récupère la configuration BTCPay depuis les variables d'environnement.
+        
+        SÉCURITÉ : Les secrets BTCPay sont chargés depuis .env,
+        PAS depuis app_config.json
+        
+        Returns:
+            Dict avec 'server_url', 'store_id', 'api_key', 'webhook_secret'
+            et les paramètres non-sensibles depuis app_config.json
+        """
+        # Charger les secrets depuis .env
+        server_url = os.getenv('BTCPAY_SERVER_URL', '')
+        store_id = os.getenv('BTCPAY_STORE_ID', '')
+        api_key = os.getenv('BTCPAY_API_KEY', '')
+        webhook_secret = os.getenv('BTCPAY_WEBHOOK_SECRET', '')
+        
+        # Charger les paramètres non-sensibles depuis app_config.json
+        config_params = self.config.get("btcpay", {})
+        
+        # Merger : secrets depuis .env, paramètres depuis fichier
+        return {
+            'server_url': server_url,
+            'store_id': store_id,
+            'api_key': api_key,
+            'webhook_secret': webhook_secret,
+            'subscription_price': config_params.get('subscription_price', 29.99),
+            'currency': config_params.get('currency', 'EUR'),
+            'trial_days': config_params.get('trial_days', 7),
+            'check_interval_hours': config_params.get('check_interval_hours', 24)
+        }
     
     def set_btcpay_config(self, **kwargs):
-        """Configure BTCPay"""
+        """
+        Configure les paramètres BTCPay NON-SENSIBLES.
+        
+        IMPORTANT : Cette méthode ne doit être utilisée que pour les paramètres
+        non-sensibles (prix, délais, etc.). Les secrets (API keys) doivent
+        être définis dans .env
+        """
+        # Filtrer pour éviter de sauvegarder des secrets par erreur
+        safe_keys = ['subscription_price', 'currency', 'trial_days', 'check_interval_hours']
+        
         for key, value in kwargs.items():
-            self.set(f"btcpay.{key}", value)
+            if key in safe_keys:
+                self.set(f"btcpay.{key}", value)
+            else:
+                print(f"⚠️ Avertissement : '{key}' devrait être défini dans .env, pas dans app_config.json")
     
     def ensure_directories(self):
         """Crée les répertoires nécessaires"""

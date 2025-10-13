@@ -13,6 +13,7 @@ from core.session_manager import SessionManager
 from services.message_service import MessageService
 from services.dialog_service import DialogService
 from services.sending_tasks_manager import sending_tasks_manager
+from ui.components.svg_icons import svg
 from ui.components.calendar import CalendarWidget
 from utils.logger import get_logger
 from utils.constants import (
@@ -24,6 +25,7 @@ from utils.constants import (
 from utils.validators import validate_message
 from utils.paths import get_temp_dir
 from utils.notification_manager import notify
+from ui.components.svg_icons import svg
 
 logger = get_logger()
 
@@ -67,7 +69,7 @@ class NewMessagePage:
         with ui.column().classes('w-full gap-6 p-8'):
             # En-tête
             with ui.row().classes('items-center gap-3 mb-2'):
-                ui.label(ICON_MESSAGE).classes('text-4xl').style('color: var(--primary);')
+                ui.html(svg('edit', 40, 'var(--primary)'))
                 ui.label('Nouveau Message').classes('text-3xl font-bold').style(
                     'color: var(--text-primary);'
                 )
@@ -141,7 +143,7 @@ class NewMessagePage:
                 with ui.card().classes('p-4').style(
                     'background: #fee2e2; border-left: 3px solid var(--danger);'
                 ):
-                    ui.label(f'✕ {MSG_NO_CONNECTED_ACCOUNT}').classes('font-bold').style(
+                    ui.label(f'{MSG_NO_CONNECTED_ACCOUNT}').classes('font-bold').style(
                         'color: #991b1b;'
                     )
             else:
@@ -157,10 +159,10 @@ class NewMessagePage:
                             notify(MSG_SELECT_ACCOUNT, type='warning')
                             return
                         
-                        # 🔒 Vérifier si le compte est occupé
+                        # Vérifier si le compte est occupé
                         if sending_tasks_manager.is_account_busy(self.state['selected_account']):
                             notify(
-                                '⚠️ Ce compte envoie déjà des messages. Attendez la fin de l\'envoi pour éviter le rate limit.',
+                                'Ce compte envoie déjà des messages. Attendez la fin de l\'envoi pour éviter le rate limit.',
                                 type='warning'
                             )
                             return
@@ -192,23 +194,33 @@ class NewMessagePage:
             # Compte occupé - grisé et non cliquable
             card_class += ' cursor-not-allowed'
             card_style = 'border: 1px solid var(--border); background: rgba(128, 128, 128, 0.1); opacity: 0.6;'
-            icon, icon_color = '⏳', 'var(--warning)'
+            icon, icon_color = 'schedule', 'var(--warning)'
         elif is_selected:
             card_class += ' cursor-pointer'
             card_style = 'border: 2px solid var(--primary); background: rgba(30, 58, 138, 0.05);'
-            icon, icon_color = '●', 'var(--primary)'
+            icon, icon_color = 'radio_button_checked', 'var(--primary)'
         else:
             card_class += ' cursor-pointer'
             card_style = 'border: 1px solid var(--border);'
-            icon, icon_color = '○', 'var(--text-secondary)'
+            icon, icon_color = 'radio_button_unchecked', 'var(--text-secondary)'
         
         def select_account() -> None:
             if is_busy:
-                notify('⏳ Ce compte est occupé par un envoi en cours', type='warning')
+                notify('Ce compte est occupé par un envoi en cours', type='warning')
                 return
             self.state['selected_account'] = session_id
-            # Réinitialiser le message pour charger celui du nouveau compte
-            self.state['message'] = ''
+            
+            # CORRECTION : Recharger les settings du compte sélectionné
+            # Recharger l'index depuis le fichier pour avoir les dernières modifications
+            self.session_manager.sessions_index = self.session_manager._load_index()
+            settings = self.session_manager.get_account_settings(session_id)
+            
+            # Charger le message par défaut du compte
+            if settings.get('default_message'):
+                self.state['message'] = settings['default_message']
+            else:
+                self.state['message'] = ''
+            
             notify(f'Compte sélectionné: {account["account_name"]}', type='info')
             self.render_steps()
         
@@ -218,7 +230,7 @@ class NewMessagePage:
         
         with card:
             with ui.row().classes('w-full items-center gap-3'):
-                ui.label(icon).classes('text-lg').style(f'color: {icon_color};')
+                ui.html(svg(icon, 24, icon_color))
                 with ui.column().classes('flex-1 gap-1'):
                     ui.label(account['account_name']).classes('text-base font-semibold').style(
                         f'color: {icon_color if is_selected else "var(--text-primary)"};'
@@ -230,7 +242,7 @@ class NewMessagePage:
                         'background: rgba(251, 191, 36, 0.2); color: var(--warning);'
                     )
                 else:
-                    ui.html('<span class="status-badge status-online"></span>', sanitize=False)
+                    ui.html('<span class="status-badge status-online"></span>')
     
     def _render_step_groups(self) -> None:
         """Étape 2 : Sélection des groupes."""
@@ -246,12 +258,16 @@ class NewMessagePage:
                     on_change=self._on_search_change
                 ).classes('flex-1').props('outlined dense')
                 
-                ui.button('✓ Tout', on_click=self._select_all_groups).props('outline dense size=sm').style(
+                with ui.button(on_click=self._select_all_groups).props('outline dense size=sm').style(
                     'color: var(--success); border-color: var(--success);'
-                )
-                ui.button('○ Rien', on_click=self._deselect_all_groups).props('outline dense size=sm').style(
+                ):
+                    ui.html(svg('check_circle', 18, '#059669'))
+                    ui.label('Tout').classes('ml-1')
+                with ui.button(on_click=self._deselect_all_groups).props('outline dense size=sm').style(
                     'color: var(--secondary); border-color: var(--secondary);'
-                )
+                ):
+                    ui.html(svg('remove_circle', 18, 'var(--secondary)'))
+                    ui.label('Rien').classes('ml-1')
             
             # Compteur
             self.counter_label = ui.label().classes('text-sm font-semibold mb-3 px-3 py-2 rounded-lg')
@@ -286,10 +302,12 @@ class NewMessagePage:
                 'color: var(--text-primary);'
             )
             
-            # Charger le message prérempli du compte sélectionné
+            # CORRECTION : Charger le message prérempli avec les derniers paramètres
             if self.state['selected_account']:
+                # Recharger l'index pour avoir les dernières modifications
+                self.session_manager.sessions_index = self.session_manager._load_index()
                 settings = self.session_manager.get_account_settings(self.state['selected_account'])
-                if settings.get('default_message'):
+                if settings.get('default_message') and not self.state.get('message'):
                     self.state['message'] = settings['default_message']
             
             # Zone de texte
@@ -328,7 +346,9 @@ class NewMessagePage:
     def _render_file_upload(self) -> None:
         """Zone d'upload simple et propre."""
         with ui.card().classes('w-full p-4'):
-            ui.label('📎 Images (optionnel)').classes('text-lg font-bold mb-3')
+            with ui.row().classes('items-center gap-2 mb-3'):
+                ui.html(svg('attach_file', 22, 'var(--text-primary)'))
+                ui.label('Images (optionnel)').classes('text-lg font-bold')
             
             # Upload simple
             def handle_upload(e):
@@ -344,7 +364,7 @@ class NewMessagePage:
                         file_size = len(content)
                     
                     if file_size > MAX_FILE_SIZE_BYTES:
-                        notify(f'❌ {file_name} trop volumineux (max {MAX_FILE_SIZE_MB} MB)', type='negative')
+                        notify(f'{file_name} trop volumineux (max {MAX_FILE_SIZE_MB} MB)', type='negative')
                         return
                     
                     # Sauvegarder
@@ -363,18 +383,18 @@ class NewMessagePage:
                         'size': file_size
                     })
                     
-                    notify(f'✓ {file_name} ajoutée', type='positive')
+                    notify(f'{file_name} ajoutée', type='positive')
                     
                 except Exception as ex:
                     logger.error(f'Erreur upload: {ex}')
-                    notify(f'❌ Erreur upload', type='negative')
+                    notify(f'Erreur upload', type='negative')
             
             # Bouton d'upload avec label personnalisé
             ui.upload(
                 on_upload=handle_upload,
                 auto_upload=True,
                 multiple=True
-            ).props('accept="image/*" label="📎 Ajouter des fichiers"').classes('w-full')
+            ).props('accept="image/*" label="Ajouter des fichiers"').classes('w-full')
             
             ui.label(f'Max {MAX_FILE_SIZE_MB} MB par image').classes('text-xs text-gray-500 mt-2')
             
@@ -385,10 +405,10 @@ class NewMessagePage:
                     size_kb = file_info['size'] / 1024
                     with ui.row().classes('w-full items-center justify-between p-2 bg-gray-50 rounded mb-1'):
                         with ui.row().classes('items-center gap-2'):
-                            ui.label('🖼️')
+                            ui.html(svg('image', 20, '#6b7280'))
                             ui.label(file_info['name']).classes('text-sm')
                             ui.label(f"{size_kb:.1f} KB").classes('text-xs text-gray-500')
-                        ui.label('✓').classes('text-green-500')
+                        ui.html(svg('check_circle', 20, '#10b981'))
             else:
                 ui.label('Aucune image').classes('text-sm text-gray-500 mt-2')
     
@@ -425,7 +445,9 @@ class NewMessagePage:
                 # === COLONNE 2: HORAIRES ===
                 with ui.column().classes('flex-1 gap-4'):
                     with ui.card().classes('p-4'):
-                        ui.label('⏰ Gestion des horaires').classes('text-lg font-bold mb-4')
+                        with ui.row().classes('items-center gap-2 mb-4'):
+                            ui.html(svg('access_time', 22, 'var(--text-primary)'))
+                            ui.label('Gestion des horaires').classes('text-lg font-bold')
                         
                         # Horaires par défaut du compte
                         self._render_default_schedules()
@@ -440,7 +462,9 @@ class NewMessagePage:
                 # === COLONNE 3: RÉSUMÉ (doublée en largeur et hauteur) ===
                 with ui.column().classes('flex-2 gap-4').style('min-height: 600px;'):
                     with ui.card().classes('p-4'):
-                        ui.label('📋 Planning final').classes('text-lg font-bold mb-4')
+                        with ui.row().classes('items-center gap-2 mb-4'):
+                            ui.html(svg('description', 22, 'var(--text-primary)'))
+                            ui.label('Planning final').classes('text-lg font-bold')
                         
                         # Conteneur pour le planning final
                         self.schedule_containers['final_schedule_container'] = ui.column().classes('gap-2')
@@ -452,7 +476,10 @@ class NewMessagePage:
                     'color: var(--secondary);'
                 )
                 
-                ui.button('📤 Envoyer', on_click=self._send_messages).classes('btn-primary')
+                with ui.button(on_click=self._send_messages).classes('btn-primary'):
+                    with ui.row().classes('items-center gap-2'):
+                        ui.html(svg('send', 18, 'white'))
+                        ui.label('Envoyer')
     
     def _render_calendar_to_container(self, container) -> None:
         """Rend le calendrier dans un conteneur spécifique."""
@@ -578,7 +605,7 @@ class NewMessagePage:
         self.state['selected_dates'] = new_dates
         self.state['selected_dates'].sort()
         
-        notify(f'✓ {days} jour(s) sélectionné(s) (à partir de demain)', type='positive')
+        notify(f'{days} jour(s) sélectionné(s) (à partir de demain)', type='positive')
         # Mettre à jour seulement les conteneurs nécessaires
         self._update_calendar_display()
         self._update_final_schedule_display()
@@ -586,7 +613,7 @@ class NewMessagePage:
     def _clear_dates(self) -> None:
         """Efface toutes les dates sélectionnées."""
         self.state['selected_dates'] = []
-        notify('✓ Dates effacées', type='info')
+        notify('Dates effacées', type='info')
         # Mettre à jour seulement les conteneurs nécessaires
         self._update_calendar_display()
         self._update_final_schedule_display()
@@ -595,7 +622,7 @@ class NewMessagePage:
         """Supprime une date spécifique."""
         if date_to_remove in self.state['selected_dates']:
             self.state['selected_dates'].remove(date_to_remove)
-            notify(f'✓ Date {date_to_remove.strftime("%d/%m/%Y")} supprimée', type='info')
+            notify(f'Date {date_to_remove.strftime("%d/%m/%Y")} supprimée', type='info')
             # Mettre à jour seulement les conteneurs nécessaires
             self._update_calendar_display()
             self._update_final_schedule_display()
@@ -606,16 +633,16 @@ class NewMessagePage:
         
         # Empêcher la sélection des jours passés et du jour actuel
         if day_date <= today:
-            notify('❌ Impossible de sélectionner une date passée ou le jour actuel', type='negative')
+            notify('Impossible de sélectionner une date passée ou le jour actuel', type='negative')
             return
         
         if day_date in self.state['selected_dates']:
             self.state['selected_dates'].remove(day_date)
-            notify(f'✓ Date {day_date.strftime("%d/%m/%Y")} désélectionnée', type='info')
+            notify(f'Date {day_date.strftime("%d/%m/%Y")} désélectionnée', type='info')
         else:
             self.state['selected_dates'].append(day_date)
             self.state['selected_dates'].sort()
-            notify(f'✓ Date {day_date.strftime("%d/%m/%Y")} sélectionnée', type='positive')
+            notify(f'Date {day_date.strftime("%d/%m/%Y")} sélectionnée', type='positive')
         
         # Mettre à jour seulement les conteneurs nécessaires
         self._update_calendar_display()
@@ -644,7 +671,7 @@ class NewMessagePage:
                         with ui.row().classes('items-center gap-2'):
                             ui.label(schedule['time']).classes('font-mono text-lg')
                             ui.label(schedule['label']).classes('text-sm text-gray-600')
-                        ui.label('✓').classes('text-green-600 font-bold')
+                        ui.html(svg('check_circle', 20, '#059669'))
             
             # Ajouter automatiquement les horaires par défaut
             if 'selected_schedules' not in self.state:
@@ -664,6 +691,9 @@ class NewMessagePage:
             return []
         
         try:
+            # CORRECTION : Recharger l'index pour avoir les derniers horaires
+            self.session_manager.sessions_index = self.session_manager._load_index()
+            
             # Utiliser le système existant de SessionManager
             settings = self.session_manager.get_account_settings(account_name)
             default_schedules = settings.get('default_schedules', [])
@@ -710,7 +740,8 @@ class NewMessagePage:
                             with ui.row().classes('items-center gap-2'):
                                 ui.label(schedule['time']).classes('font-mono text-lg')
                                 ui.label(schedule['label']).classes('text-sm text-gray-600')
-                            ui.button('✕', on_click=lambda s=schedule: self._remove_schedule(s)).props('dense round').classes('text-red-500')
+                            with ui.button(on_click=lambda s=schedule: self._remove_schedule(s)).props('dense round flat').style('color: #ef4444;'):
+                                ui.html(svg('close', 18, '#ef4444'))
             else:
                 ui.label('Aucun horaire ajouté manuellement').classes('text-sm text-gray-500 mt-4')
     
@@ -789,7 +820,7 @@ class NewMessagePage:
                                 ui.label(f'à {item["time"]}').classes('font-mono text-lg font-bold text-blue-600')
                             with ui.column().classes('items-center gap-1'):
                                 ui.label(f'#{i+1}').classes('text-xs text-gray-500')
-                                ui.label('📤').classes('text-xl')
+                                ui.html(svg('send', 24, 'var(--primary)'))
             else:
                 ui.label('Sélectionnez des dates et horaires').classes('text-sm text-gray-500 italic')
                 ui.label('pour voir le planning final').classes('text-xs text-gray-400')
@@ -807,7 +838,7 @@ class NewMessagePage:
         # Éviter les doublons
         if not any(s['time'] == schedule['time'] for s in self.state['selected_schedules']):
             self.state['selected_schedules'].append(schedule)
-            notify(f'✓ {schedule["time"]} ajouté', type='positive')
+            notify(f'{schedule["time"]} ajouté', type='positive')
             # Mettre à jour les conteneurs nécessaires
             self._update_manual_schedules_display()
             self._update_final_schedule_display()
@@ -815,7 +846,7 @@ class NewMessagePage:
     def _add_custom_schedule(self, time_str) -> None:
         """Ajoute un horaire personnalisé."""
         if not time_str:
-            notify('❌ Veuillez saisir une heure', type='negative')
+            notify('Veuillez saisir une heure', type='negative')
             return
         
         custom_schedule = {'time': time_str, 'label': 'Personnalisé'}
@@ -824,7 +855,7 @@ class NewMessagePage:
     def _add_custom_schedule_from_inputs(self, hour, minute) -> None:
         """Ajoute un horaire personnalisé depuis les inputs numériques."""
         if hour is None or minute is None:
-            notify('❌ Veuillez saisir une heure complète', type='negative')
+            notify('Veuillez saisir une heure complète', type='negative')
             return
         
         # Convertir en entiers (les inputs ui.number retournent des float)
@@ -832,20 +863,20 @@ class NewMessagePage:
             hour = int(hour) if hour is not None else None
             minute = int(minute) if minute is not None else None
         except (ValueError, TypeError):
-            notify('❌ Valeurs invalides', type='negative')
+            notify('Valeurs invalides', type='negative')
             return
         
         if hour is None or minute is None:
-            notify('❌ Veuillez saisir une heure complète', type='negative')
+            notify('Veuillez saisir une heure complète', type='negative')
             return
         
         # Valider les valeurs
         if hour < 0 or hour > 23:
-            notify('❌ Heure invalide (0-23)', type='negative')
+            notify('Heure invalide (0-23)', type='negative')
             return
         
         if minute < 0 or minute > 59:
-            notify('❌ Minute invalide (0-59)', type='negative')
+            notify('Minute invalide (0-59)', type='negative')
             return
         
         # Formater l'heure avec zéros devant
@@ -862,7 +893,7 @@ class NewMessagePage:
         """Supprime un horaire de la sélection."""
         if 'selected_schedules' in self.state and schedule in self.state['selected_schedules']:
             self.state['selected_schedules'].remove(schedule)
-            notify(f'✓ {schedule["time"]} supprimé', type='info')
+            notify(f'{schedule["time"]} supprimé', type='info')
             # Mettre à jour les conteneurs nécessaires
             self._update_manual_schedules_display()
             self._update_final_schedule_display()
@@ -963,11 +994,11 @@ class NewMessagePage:
                     'click', make_toggle(group['id'])
                 ):
                     with ui.row().classes('w-full items-center gap-3'):
-                        icon = '●' if is_selected else '○'
-                        ui.label(icon).classes('text-xl')
+                        icon = 'radio_button_checked' if is_selected else 'radio_button_unchecked'
+                        ui.html(svg(icon, 22, 'var(--primary)' if is_selected else 'var(--text-secondary)'))
                         ui.label(group['title']).classes('text-sm font-medium flex-1')
                         if is_selected:
-                            ui.label('✓').classes('text-sm font-bold').style('color: var(--success);')
+                            ui.html(svg('check', 18, '#059669'))
     
     def _update_counter(self) -> None:
         """Met à jour le compteur de sélection."""
@@ -982,13 +1013,13 @@ class NewMessagePage:
         
         if selected == 0:
             style = 'background: rgba(239, 68, 68, 0.1); color: var(--danger);'
-            text = f'○ Aucun groupe sélectionné ({total} disponibles)'
+            text = f'Aucun groupe sélectionné ({total} disponibles)'
         elif selected == total:
             style = 'background: rgba(16, 185, 129, 0.1); color: var(--success);'
-            text = f'✓ Tous les groupes sélectionnés ({selected}/{total})'
+            text = f'Tous les groupes sélectionnés ({selected}/{total})'
         else:
             style = 'background: rgba(30, 58, 138, 0.1); color: var(--primary);'
-            text = f'● {selected} groupe(s) sélectionné(s) sur {total}'
+            text = f'{selected} groupe(s) sélectionné(s) sur {total}'
         
         self.counter_label.set_text(text)
         self.counter_label.style(style)
@@ -1043,7 +1074,9 @@ class NewMessagePage:
         
         # Afficher dialogue de progression avec bouton Minimiser
         with ui.dialog() as progress_dialog, ui.card().classes('w-96 p-6'):
-            ui.label('📤 Envoi en cours...').classes('text-xl font-bold mb-4')
+            with ui.row().classes('items-center gap-2 mb-4'):
+                ui.html(svg('send', 28, 'var(--primary)'))
+                ui.label('Envoi en cours...').classes('text-xl font-bold')
             progress_label = ui.label('Préparation...').classes('mb-2')
             progress_bar = ui.linear_progress(value=0).classes('w-full mb-4')
             
@@ -1060,16 +1093,20 @@ class NewMessagePage:
                     self.state['selected_schedules'] = []
                     self.state['final_schedule'] = []
                     self.render_steps()
-                    notify('📤 Envoi en arrière-plan, consultez l\'onglet "Envois en cours"', type='info')
+                    notify('Envoi en arrière-plan, consultez l\'onglet "Envois en cours"', type='info')
                 
-                ui.button('⬇ Minimiser', on_click=minimize).props('outline').classes('flex-1')
-                ui.button('✕ Annuler', on_click=lambda: task.cancel()).props('flat color=red').classes('flex-1')
+                with ui.button(on_click=minimize).props('outline').classes('flex-1'):
+                    ui.html(svg('expand_more', 18))
+                    ui.label('Minimiser').classes('ml-1')
+                with ui.button(on_click=lambda: task.cancel()).props('flat').style('color: #ef4444;').classes('flex-1'):
+                    ui.html(svg('close', 18, '#ef4444'))
+                    ui.label('Annuler').classes('ml-1')
         
         progress_dialog.open()
         
         def on_progress(sent: int, total: int, skipped: int, failed_groups: Set[int]) -> None:
             """Met à jour la progression avec le total ajusté dynamiquement."""
-            # ✅ Passer le total ajusté pour que l'interface reflète les exclusions
+            # Passer le total ajusté pour que l'interface reflète les exclusions
             task.update_progress(sent, skipped, failed_groups, total_adjusted=total)
             progress = sent / total if total > 0 else 0
             progress_bar.set_value(progress)
@@ -1087,7 +1124,7 @@ class NewMessagePage:
                 file_path=file_path,
                 on_progress=on_progress,
                 cancelled_flag=task.cancel_flag,
-                task=task  # ⏰ Passer la tâche pour l'affichage des attentes
+                task=task  # Passer la tâche pour l'affichage des attentes
             )
             
             # Marquer la tâche comme terminée
@@ -1098,14 +1135,14 @@ class NewMessagePage:
                 progress_dialog.close()
             
             if task.cancel_flag['value']:
-                notify(f'⚠️ Envoi annulé : {sent} messages envoyés', type='warning')
+                notify(f'Envoi annulé : {sent} messages envoyés', type='warning')
             elif failed_groups:
                 notify(
-                    f'✅ {sent} messages envoyés, {skipped} ignorés, {len(failed_groups)} groupes en erreur',
+                    f'{sent} messages envoyés, {skipped} ignorés, {len(failed_groups)} groupes en erreur',
                     type='warning'
                 )
             else:
-                notify(f'✅ {sent} messages programmés avec succès !', type='positive')
+                notify(f'{sent} messages programmés avec succès !', type='positive')
             
             # Nettoyer le fichier temporaire si utilisé
             if file_path:
@@ -1127,5 +1164,5 @@ class NewMessagePage:
             if progress_dialog.value:
                 progress_dialog.close()
             logger.error(f"Erreur envoi messages: {e}")
-            notify(f'❌ Erreur: {e}', type='negative')
+            notify(f'Erreur: {e}', type='negative')
 

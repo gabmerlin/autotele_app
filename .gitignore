@@ -37,12 +37,20 @@ env/
 temp/*
 !temp/.gitkeep
 logs/*.log
+logs/*.json
 sessions/*.session
+sessions/*.session-journal
+sessions/sessions_index.json
 backup/
 *.enc
 
-# Configuration (sensitive data)
+# Configuration (sensitive data) - CRITIQUE: Ne JAMAIS committer ces fichiers
+.env
+config/.env
 config/api_credentials.py
+config/.user_session
+config/.subscription_status
+config/app_config.json
 
 # Windows
 Thumbs.db

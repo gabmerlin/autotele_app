@@ -1,6 +1,4 @@
-"""
-Gestion centralisée des chemins de l'application.
-"""
+"""Gestion centralisée des chemins de l'application."""
 from pathlib import Path
 from typing import Final
 
@@ -15,54 +13,43 @@ CONFIG_DIR: Final[Path] = PROJECT_ROOT / 'config'
 BACKUP_DIR: Final[Path] = PROJECT_ROOT / 'backup'
 
 
-def get_temp_dir() -> Path:
+def _ensure_dir_exists(directory: Path) -> Path:
     """
-    Retourne le répertoire temporaire et le crée si nécessaire.
-    
+    Crée un répertoire s'il n'existe pas et le retourne.
+
+    Args:
+        directory: Chemin du répertoire à créer.
+
     Returns:
-        Path: Chemin du répertoire temporaire
+        Path: Chemin du répertoire créé.
     """
-    TEMP_DIR.mkdir(exist_ok=True)
-    return TEMP_DIR
+    directory.mkdir(exist_ok=True)
+    return directory
+
+
+def get_temp_dir() -> Path:
+    """Retourne le répertoire temporaire et le crée si nécessaire."""
+    return _ensure_dir_exists(TEMP_DIR)
 
 
 def get_sessions_dir() -> Path:
-    """
-    Retourne le répertoire des sessions et le crée si nécessaire.
-    
-    Returns:
-        Path: Chemin du répertoire des sessions
-    """
-    SESSIONS_DIR.mkdir(exist_ok=True)
-    return SESSIONS_DIR
+    """Retourne le répertoire des sessions et le crée si nécessaire."""
+    return _ensure_dir_exists(SESSIONS_DIR)
 
 
 def get_logs_dir() -> Path:
-    """
-    Retourne le répertoire des logs et le crée si nécessaire.
-    
-    Returns:
-        Path: Chemin du répertoire des logs
-    """
-    LOGS_DIR.mkdir(exist_ok=True)
-    return LOGS_DIR
+    """Retourne le répertoire des logs et le crée si nécessaire."""
+    return _ensure_dir_exists(LOGS_DIR)
 
 
 def get_config_dir() -> Path:
-    """
-    Retourne le répertoire de configuration.
-    
-    Returns:
-        Path: Chemin du répertoire de configuration
-    """
+    """Retourne le répertoire de configuration."""
     return CONFIG_DIR
 
 
 def ensure_all_directories() -> None:
     """Crée tous les répertoires nécessaires à l'application."""
-    TEMP_DIR.mkdir(exist_ok=True)
-    SESSIONS_DIR.mkdir(exist_ok=True)
-    LOGS_DIR.mkdir(exist_ok=True)
-    CONFIG_DIR.mkdir(exist_ok=True)
-    BACKUP_DIR.mkdir(exist_ok=True)
+    for directory in [TEMP_DIR, SESSIONS_DIR, LOGS_DIR, CONFIG_DIR,
+                      BACKUP_DIR]:
+        _ensure_dir_exists(directory)
 

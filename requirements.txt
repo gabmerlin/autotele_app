@@ -1,8 +1,11 @@
 nicegui>=1.4.35
 telethon==1.36.0
-cryptography==42.0.5
-requests==2.31.0
-python-dateutil==2.9.0
+cryptography>=42.0.0
+requests>=2.32.0
+python-dateutil>=2.9.0
 aiofiles>=24.1.0
 Pillow
 pywin32
+python-dotenv>=1.0.0
+supabase>=2.10.0
+pywebview

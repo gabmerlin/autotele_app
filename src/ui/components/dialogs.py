@@ -3,6 +3,7 @@ Composants de dialogues réutilisables.
 """
 from typing import Callable, Optional
 from nicegui import ui
+from ui.components.svg_icons import svg
 from utils.logger import get_logger
 from utils.notification_manager import notify
 from utils.constants import ICON_WARNING, ICON_SUCCESS, ICON_ERROR
@@ -44,9 +45,11 @@ class VerificationDialog:
         self.dialog = ui.dialog().props('persistent')
         
         with self.dialog, ui.card().classes('w-96 p-6 card-modern'):
-            ui.label('✓ Vérification').classes('text-2xl font-bold mb-4').style(
-                'color: var(--text-primary);'
-            )
+            with ui.row().classes('items-center gap-2 mb-4'):
+                ui.html(svg('check_circle', 28, 'var(--primary)'))
+                ui.label('Vérification').classes('text-2xl font-bold').style(
+                    'color: var(--text-primary);'
+                )
             
             with ui.column().classes('w-full gap-4'):
                 ui.label(f'Compte: {self.account_name} ({self.phone})').classes('text-gray-600')
@@ -63,9 +66,11 @@ class VerificationDialog:
                 with ui.card().classes('p-3').style(
                     'background: #fef3c7; border-left: 3px solid var(--warning);'
                 ):
-                    ui.label(
-                        f'{ICON_WARNING} Le mot de passe 2FA n\'est requis que si vous l\'avez activé sur Telegram'
-                    ).classes('text-sm').style('color: #92400e;')
+                    with ui.row().classes('items-center gap-2'):
+                        ui.html(svg(ICON_WARNING, 18, '#92400e'))
+                        ui.label(
+                            'Le mot de passe 2FA n\'est requis que si vous l\'avez activé sur Telegram'
+                        ).classes('text-sm').style('color: #92400e;')
                 
                 async def verify() -> None:
                     """Vérifie le code de vérification."""
@@ -84,7 +89,7 @@ class VerificationDialog:
                         self.close()
                     except Exception as e:
                         logger.error(f"Erreur vérification: {e}")
-                        notify(f'{ICON_ERROR} {e}', type='negative')
+                        notify(str(e), type='negative')
                 
                 def cancel() -> None:
                     """Annule la vérification."""
@@ -96,7 +101,10 @@ class VerificationDialog:
                     ui.button('Annuler', on_click=cancel).props('flat').style(
                         'color: var(--secondary);'
                     )
-                    ui.button('✓ Vérifier', on_click=verify).classes('btn-primary')
+                    with ui.button(on_click=verify).classes('btn-primary'):
+                        with ui.row().classes('items-center gap-1'):
+                            ui.html(svg('check', 18, 'white'))
+                            ui.label('Vérifier')
         
         self.dialog.open()
     
@@ -162,7 +170,7 @@ class ConfirmDialog:
                     self.close()
                 except Exception as e:
                     logger.error(f"Erreur confirmation: {e}")
-                    notify(f'{ICON_ERROR} {e}', type='negative')
+                    notify(str(e), type='negative')
             
             def cancel() -> None:
                 """Annule l'action."""
@@ -195,7 +203,7 @@ class InfoDialog:
         self,
         title: str,
         message: str,
-        icon: str = "ℹ️",
+        icon: str = "info",
         button_text: str = "OK"
     ):
         """
@@ -218,7 +226,7 @@ class InfoDialog:
         self.dialog = ui.dialog()
         
         with self.dialog, ui.card().classes('w-96 p-6 card-modern text-center'):
-            ui.label(self.icon).classes('text-5xl mb-3')
+            ui.html(svg('info', 60, 'var(--primary)'))
             ui.label(self.title).classes('text-xl font-bold mb-2').style(
                 'color: var(--text-primary);'
             )

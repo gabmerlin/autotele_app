@@ -12,6 +12,7 @@ from telethon.tl.types import User, Chat, Channel
 
 from core.telegram.account import TelegramAccount
 from utils.logger import get_logger
+from utils.media_validator import MediaValidator
 
 logger = get_logger()
 
@@ -74,7 +75,7 @@ class MessagingService:
         return age_minutes < max_age_minutes
     
     @staticmethod
-    async def get_conversations(account: TelegramAccount, limit: int = 30, include_groups: bool = False) -> List[Dict]:
+    async def get_conversations(account: TelegramAccount, limit: int = 15, include_groups: bool = False, groups_only: bool = False) -> List[Dict]:
         """
         Récupère les conversations récentes d'un compte.
         
@@ -82,6 +83,7 @@ class MessagingService:
             account: Compte Telegram
             limit: Nombre maximum de conversations
             include_groups: Si True, inclut les groupes et canaux. Si False, uniquement les users.
+            groups_only: Si True, charge uniquement les groupes/canaux (ignore les users).
             
         Returns:
             List[Dict]: Liste des conversations avec dernier message
@@ -93,8 +95,8 @@ class MessagingService:
         try:
             conversations = []
             
-            # Limite raisonnable pour éviter la surcharge
-            max_iter = limit * 3 if not include_groups else limit
+            # Limite raisonnable pour éviter la surcharge (réduite pour plus de rapidité)
+            max_iter = limit * 2 if not include_groups else limit
             dialog_count = 0
             async for dialog in account.client.iter_dialogs(limit=max_iter):
                 dialog_count += 1
@@ -107,8 +109,13 @@ class MessagingService:
                 elif isinstance(entity, Chat):
                     entity_type = "group"
                 
-                # 🔒 Filtrer par type si nécessaire
-                if not include_groups and entity_type in ["channel", "group"]:
+                # Filtrer par type si nécessaire
+                if groups_only:
+                    # Mode "groupes seulement" - ignorer les utilisateurs
+                    if entity_type == "user":
+                        continue
+                elif not include_groups and entity_type in ["channel", "group"]:
+                    # Mode "utilisateurs seulement" - ignorer les groupes
                     continue
                 
                 # Récupérer le dernier message
@@ -123,25 +130,25 @@ class MessagingService:
                         # Déterminer le type de média
                         media_type = type(last_message.media).__name__
                         if media_type == 'MessageMediaPhoto':
-                            last_message_text = "📷 Photo"
+                            last_message_text = "[Photo]"
                         elif media_type == 'MessageMediaDocument':
                             # Vérifier si c'est une vidéo, audio, etc.
                             if hasattr(last_message.media.document, 'mime_type'):
                                 mime_type = last_message.media.document.mime_type
                                 if mime_type.startswith('video/'):
-                                    last_message_text = "🎥 Vidéo"
+                                    last_message_text = "[Vidéo]"
                                 elif mime_type.startswith('audio/'):
-                                    last_message_text = "🎵 Audio"
+                                    last_message_text = "[Audio]"
                                 elif mime_type.startswith('image/'):
-                                    last_message_text = "🖼️ Image"
+                                    last_message_text = "[Image]"
                                 else:
-                                    last_message_text = "📎 Document"
+                                    last_message_text = "[Document]"
                             else:
-                                last_message_text = "📎 Document"
+                                last_message_text = "[Document]"
                         elif media_type == 'MessageMediaVideo':
-                            last_message_text = "🎥 Vidéo"
+                            last_message_text = "[Vidéo]"
                         elif media_type == 'MessageMediaAudio':
-                            last_message_text = "🎵 Audio"
+                            last_message_text = "[Audio]"
                         else:
                             last_message_text = "[Média]"
                         
@@ -156,7 +163,7 @@ class MessagingService:
                     last_message_date = last_message.date
                     last_message_from_me = last_message.out
                     
-                    # 🕐 Convertir l'heure UTC en heure locale
+                    # Convertir l'heure UTC en heure locale
                     if last_message_date:
                         if hasattr(last_message_date, 'tzinfo') and last_message_date.tzinfo is not None:
                             last_message_date = last_message_date.astimezone().replace(tzinfo=None)
@@ -168,10 +175,19 @@ class MessagingService:
                     if hasattr(entity, 'photo') and entity.photo:
                         # Créer le dossier pour les photos de profil
                         photos_dir = os.path.join(os.getcwd(), 'temp', 'photos')
-                        os.makedirs(photos_dir, exist_ok=True)
                         
-                        # Télécharger la photo de profil
-                        profile_photo_path = await account.client.download_profile_photo(entity, photos_dir)
+                        # Vérifier l'espace disque avant téléchargement
+                        has_space, space_error = MediaValidator.check_disk_space(photos_dir)
+                        if has_space:
+                            os.makedirs(photos_dir, exist_ok=True)
+                            
+                            # Télécharger avec timeout
+                            profile_photo_path = await asyncio.wait_for(
+                                account.client.download_profile_photo(entity, photos_dir),
+                                timeout=30  # 30 secondes max pour une photo de profil
+                            )
+                except asyncio.TimeoutError:
+                    logger.debug("Timeout téléchargement photo de profil")
                 except Exception as e:
                     pass
                 
@@ -207,7 +223,7 @@ class MessagingService:
     async def get_messages(
         account: TelegramAccount,
         chat_id: int,
-        limit: int = 30,
+        limit: int = 10,
         offset_id: int = 0
     ) -> List[Dict]:
         """
@@ -249,7 +265,7 @@ class MessagingService:
                 # Texte du message
                 message_text = message.text or message.message or ""
                 
-                # Gestion des médias
+                # Gestion des médias avec validation de sécurité
                 media_type = None
                 media_data = None
                 media_caption = ""
@@ -262,10 +278,19 @@ class MessagingService:
                         try:
                             # Créer le dossier de médias s'il n'existe pas
                             media_dir = os.path.join(os.getcwd(), 'temp', 'media')
-                            os.makedirs(media_dir, exist_ok=True)
                             
-                            # Télécharger le média dans le dossier temp/media
-                            media_data = await account.client.download_media(message, media_dir)
+                            # SÉCURITÉ : Télécharger avec validation complète
+                            success, file_path, error = await MediaValidator.download_media_safely(
+                                account.client,
+                                message,
+                                media_dir
+                            )
+                            
+                            if success and file_path:
+                                media_data = file_path
+                            else:
+                                logger.warning(f"Média non téléchargé: {error}")
+                                media_data = None
                             
                             # Récupérer la légende si elle existe
                             if hasattr(message.media, 'caption') and message.media.caption:
@@ -277,7 +302,7 @@ class MessagingService:
                             logger.warning(f"Erreur téléchargement média: {e}")
                             media_data = None
                 
-                # 🕐 Convertir l'heure UTC en heure locale
+                # Convertir l'heure UTC en heure locale
                 if message.date.tzinfo is not None:
                     local_date = message.date.astimezone().replace(tzinfo=None)
                 else:
@@ -471,7 +496,10 @@ class MessagingService:
             for conv in conversations_by_account[master_account_id]:
                 conv_copy = conv.copy()
                 # Utiliser le vrai nom du compte si disponible
-                conv_copy['account_name'] = account_names.get(master_account_id, master_account_id) if account_names else master_account_id
+                if account_names and master_account_id in account_names:
+                    conv_copy['account_name'] = account_names[master_account_id]
+                else:
+                    conv_copy['account_name'] = master_account_id
                 conversations_map[conv['entity_id']] = conv_copy
         
         # Ajouter les conversations des autres comptes (uniquement si pas déjà présentes)
@@ -484,7 +512,10 @@ class MessagingService:
                 if conv['entity_id'] not in conversations_map:
                     conv_copy = conv.copy()
                     # Utiliser le vrai nom du compte si disponible
-                    conv_copy['account_name'] = account_names.get(session_id, session_id) if account_names else session_id
+                    if account_names and session_id in account_names:
+                        conv_copy['account_name'] = account_names[session_id]
+                    else:
+                        conv_copy['account_name'] = session_id
                     conversations_map[conv['entity_id']] = conv_copy
         
         # Convertir en liste

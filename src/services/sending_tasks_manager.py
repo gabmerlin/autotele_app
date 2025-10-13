@@ -85,7 +85,7 @@ class SendingTask:
         self.skipped = skipped
         self.failed_groups = failed_groups
         
-        # ✅ Mettre à jour le total si fourni (après exclusions)
+        # Mettre à jour le total si fourni (après exclusions)
         if total_adjusted is not None:
             self.total_messages = total_adjusted
         
@@ -116,7 +116,6 @@ class SendingTasksManager:
         
         self.tasks: Dict[str, SendingTask] = {}
         self._initialized = True
-        logger.info("SendingTasksManager initialisé")
     
     def create_task(
         self,

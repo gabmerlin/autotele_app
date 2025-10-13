@@ -8,6 +8,7 @@ from nicegui import ui
 
 from core.telegram.manager import TelegramManager
 from services.messaging_service import MessagingService
+from ui.components.svg_icons import svg
 from utils.logger import get_logger
 from utils.notification_manager import notify
 from utils.constants import ICON_MESSAGE
@@ -73,12 +74,152 @@ class MessagingPage:
                 # Colonne droite : Messages de la conversation sélectionnée
                 self._render_messages_area()
         
-        # Charger les conversations au démarrage
-        ui.timer(2.0, lambda: asyncio.create_task(self._load_conversations()), once=True)
+        # Charger immédiatement depuis le cache si disponible
+        self._load_conversations_from_cache_immediately()
+        
+        # Charger les conversations en arrière-plan
+        asyncio.create_task(self._load_conversations())
         
         # Rafraîchissement automatique toutes les 300 secondes (5 min)
         # Cela réduit drastiquement la charge
         self.refresh_timer = ui.timer(300, lambda: asyncio.create_task(self._refresh_conversations()))
+    
+    def _load_conversations_from_cache_immediately(self) -> None:
+        """Charge immédiatement les conversations depuis le cache sans délai."""
+        try:
+            # Charger depuis le cache même s'il est ancien (jusqu'à 24h)
+            conversations_by_account = MessagingService.load_conversations_cache()
+            
+            if conversations_by_account:
+                # Convertir les strings datetime en objets datetime
+                for session_id, conversations in conversations_by_account.items():
+                    for conv in conversations:
+                        if conv.get('last_message_date') and isinstance(conv['last_message_date'], str):
+                            try:
+                                from datetime import datetime
+                                conv['last_message_date'] = datetime.fromisoformat(conv['last_message_date'])
+                            except:
+                                conv['last_message_date'] = None
+                
+                # Fusionner et afficher immédiatement
+                self._merge_and_display_conversations(conversations_by_account)
+                
+        except Exception as e:
+            logger.error(f"Erreur chargement cache immédiat: {e}")
+    
+    async def _toggle_groups_display(self) -> None:
+        """Ajoute ou supprime les groupes de l'affichage sans perdre les conversations existantes."""
+        try:
+            if self.state['show_groups']:
+                # Mode "avec groupes" - ajouter les groupes aux conversations existantes
+                await self._add_groups_to_conversations()
+            else:
+                # Mode "sans groupes" - supprimer les groupes des conversations
+                self._remove_groups_from_conversations()
+            
+            # Réappliquer les filtres et mettre à jour l'affichage
+            self._apply_filters()
+            
+        except Exception as e:
+            logger.error(f"Erreur toggle groupes: {e}")
+            notify('Erreur lors du changement d\'affichage des groupes', type='negative')
+    
+    async def _add_groups_to_conversations(self) -> None:
+        """Ajoute les groupes aux conversations existantes."""
+        try:
+            # Afficher une notification de chargement
+            notify('Chargement des groupes...', type='info')
+            
+            # Charger seulement les groupes pour les comptes sélectionnés
+            conversations_by_account = {}
+            
+            for session_id in self.state['selected_accounts']:
+                account = self.telegram_manager.get_account(session_id)
+                if account and account.is_connected:
+                    # Charger uniquement les groupes (pas les utilisateurs)
+                    groups_only = await MessagingService.get_conversations(
+                        account, 
+                        limit=10,
+                        include_groups=True,
+                        groups_only=True  # Seulement les groupes
+                    )
+                    
+                    if groups_only:
+                        conversations_by_account[session_id] = groups_only
+            
+            if conversations_by_account:
+                # Fusionner avec les conversations existantes
+                self._merge_groups_with_existing_conversations(conversations_by_account)
+                notify('Groupes ajoutés à la liste', type='positive')
+            else:
+                notify('Aucun groupe trouvé', type='warning')
+                
+        except Exception as e:
+            logger.error(f"Erreur ajout groupes: {e}")
+            notify('Erreur lors du chargement des groupes', type='negative')
+    
+    def _merge_groups_with_existing_conversations(self, new_groups_by_account: dict) -> None:
+        """Fusionne les nouveaux groupes avec les conversations existantes en respectant le compte maître."""
+        # Récupérer le compte maître
+        from core.session_manager import SessionManager
+        session_mgr = SessionManager()
+        master_account_id = session_mgr.get_master_account()
+        
+        # Créer le mapping des noms de comptes
+        account_names = {}
+        for session_id in self.state['selected_accounts']:
+            account = self.telegram_manager.get_account(session_id)
+            if account:
+                account_names[session_id] = account.account_name
+        
+        # Utiliser la logique de fusion existante pour les nouveaux groupes
+        merged_groups = MessagingService.merge_conversations_from_accounts(
+            new_groups_by_account,
+            master_account_id=master_account_id if master_account_id in self.state['selected_accounts'] else None,
+            account_names=account_names
+        )
+        
+        # Créer un mapping des conversations existantes par ID
+        existing_conversations = {conv['entity_id']: conv for conv in self.state['all_conversations']}
+        
+        # Ajouter les nouveaux groupes fusionnés qui ne sont pas déjà présents
+        for group in merged_groups:
+            group_id = group['entity_id']
+            if group_id not in existing_conversations:
+                # Ajouter le session_id au groupe
+                account_name = group.get('account_name')
+                if account_name:
+                    # Trouver le session_id correspondant au nom du compte
+                    for session_id, name in account_names.items():
+                        if name == account_name:
+                            group['session_id'] = session_id
+                            break
+                
+                self.state['all_conversations'].append(group)
+        
+        # Trier par date de dernier message (plus récent en premier)
+        self.state['all_conversations'].sort(
+            key=lambda x: x.get('last_message_date') or datetime.min, 
+            reverse=True
+        )
+    
+    def _remove_groups_from_conversations(self) -> None:
+        """Supprime les groupes des conversations (garde seulement les utilisateurs)."""
+        # Compter les groupes avant suppression
+        groups_count = len([
+            conv for conv in self.state['all_conversations']
+            if conv.get('type') in ['group', 'supergroup', 'channel']
+        ])
+        
+        # Filtrer pour garder seulement les conversations d'utilisateurs
+        self.state['all_conversations'] = [
+            conv for conv in self.state['all_conversations']
+            if conv.get('type') == 'user'
+        ]
+        
+        # Notifier le nombre de groupes supprimés
+        if groups_count > 0:
+            notify(f'{groups_count} groupe(s) masqué(s)', type='info')
     
     def _render_header(self) -> None:
         """Rend l'en-tête avec sélecteur de comptes."""
@@ -87,7 +228,7 @@ class MessagingPage:
         ):
             # Titre
             with ui.row().classes('items-center gap-3'):
-                ui.label('💬').classes('text-4xl')
+                ui.html(svg('chat', 40, 'var(--primary)'))
                 ui.label('Messagerie').classes('text-3xl font-bold').style(
                     'color: var(--text-primary);'
                 )
@@ -100,10 +241,12 @@ class MessagingPage:
                 self._render_accounts_selector()
                 
                 # Bouton rafraîchir
-                ui.button(
-                    '🔄 Rafraîchir',
+                with ui.button(
                     on_click=lambda: asyncio.create_task(self._load_conversations())
-                ).props('outline dense').classes('text-blue-500')
+                ).props('outline dense').classes('text-blue-500'):
+                    with ui.row().classes('items-center gap-1'):
+                        ui.html(svg('sync', 18, '#3b82f6'))
+                        ui.label('Rafraîchir')
     
     def _render_accounts_selector(self) -> None:
         """Rend le sélecteur de comptes."""
@@ -138,12 +281,31 @@ class MessagingPage:
                             await self._load_conversations()
                         return toggle
                     
-                    style = 'background: var(--primary); color: white;' if is_selected else 'background: var(--bg-secondary); color: var(--text-secondary);'
+                    # Style amélioré pour mieux distinguer les comptes
+                    if is_selected:
+                        style = (
+                            'background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); '
+                            'color: white; '
+                            'font-weight: bold; '
+                            'border: 2px solid #1d4ed8; '
+                            'box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3); '
+                            'transform: scale(1.05);'
+                        )
+                        icon = '✓ '
+                    else:
+                        style = (
+                            'background: #f3f4f6; '
+                            'color: #6b7280; '
+                            'font-weight: normal; '
+                            'border: 2px solid #e5e7eb; '
+                            'opacity: 0.7;'
+                        )
+                        icon = ''
                     
                     ui.button(
-                        f"{'✓ ' if is_selected else ''}{account['account_name']}",
+                        f"{icon}{account['account_name']}",
                         on_click=make_toggle(session_id)
-                    ).props('dense').style(style)
+                    ).props('dense').style(style).classes('transition-all duration-200')
     
     def _render_conversations_list(self) -> None:
         """Rend la liste des conversations."""
@@ -154,15 +316,15 @@ class MessagingPage:
             # Barre de recherche et filtres
             with ui.column().classes('w-full p-4 gap-2').style('border-bottom: 1px solid var(--border);'):
                 self.search_input = ui.input(
-                    placeholder='🔍 Rechercher...',
+                    placeholder='Rechercher...',
                     on_change=self._on_search_conversations
                 ).classes('w-full').props('dense outlined')
                 
                 # Case à cocher pour afficher les groupes
                 async def toggle_groups(e):
                     self.state['show_groups'] = e.value
-                    # Recharger les conversations avec/sans groupes
-                    await self._load_conversations(force=True)
+                    # Ajouter/supprimer les groupes sans perdre les conversations existantes
+                    await self._toggle_groups_display()
                 
                 ui.checkbox(
                     'Afficher les groupes',
@@ -205,8 +367,8 @@ class MessagingPage:
                 placeholder='Écrivez votre message...'
             ).classes('flex-1').props('outlined dense rows=2')
             
-            # Gérer les événements clavier
-            self.message_input.on('keydown', self._handle_keydown)
+            # Gérer Entrée pour envoyer (Shift+Entrée pour nouvelle ligne)
+            self.message_input.on('keydown.enter', self._handle_keydown)
             
             async def send_message():
                 if not self.state['selected_conversation']:
@@ -240,7 +402,7 @@ class MessagingPage:
                 )
                 
                 if success:
-                    notify('✓ Message envoyé', type='positive')
+                    notify('Message envoyé', type='positive')
                     
                     # Ajouter le message envoyé immédiatement à l'affichage
                     self._add_sent_message_to_display(message)
@@ -256,10 +418,12 @@ class MessagingPage:
                     notify('Erreur lors de l\'envoi', type='negative')
             
             with ui.column().classes('gap-1 items-end'):
-                ui.button(
-                    '📤 Envoyer',
+                with ui.button(
                     on_click=send_message
-                ).props('color=primary').classes('px-6')
+                ).props('color=primary').classes('px-6'):
+                    with ui.row().classes('items-center gap-1'):
+                        ui.html(svg('send', 18, 'white'))
+                        ui.label('Envoyer')
                 
                 # Indicateur des raccourcis clavier
                 ui.label('Entrée = Envoyer • Shift+Entrée = Nouvelle ligne').classes('text-xs').style(
@@ -285,16 +449,16 @@ class MessagingPage:
                             ui.image(conv['profile_photo']).style('width: 50px; height: 50px; border-radius: 50%; object-fit: cover;')
                         else:
                             # Fallback vers icône
-                            icon = '👤' if conv['type'] == 'user' else '👥' if conv['type'] == 'group' else '📢'
-                            ui.label(icon).classes('text-3xl')
+                            icon_name = 'person' if conv['type'] == 'user' else 'group' if conv['type'] == 'group' else 'campaign'
+                            ui.html(svg(icon_name, 40, 'var(--text-secondary)'))
                     except Exception as e:
                         # Fallback vers icône en cas d'erreur
-                        icon = '👤' if conv['type'] == 'user' else '👥' if conv['type'] == 'group' else '📢'
-                        ui.label(icon).classes('text-3xl')
+                        icon_name = 'person' if conv['type'] == 'user' else 'group' if conv['type'] == 'group' else 'campaign'
+                        ui.html(svg(icon_name, 40, 'var(--text-secondary)'))
                 else:
-                    # Pas de photo, afficher l'icône
-                    icon = '👤' if conv['type'] == 'user' else '👥' if conv['type'] == 'group' else '📢'
-                    ui.label(icon).classes('text-3xl')
+                    # Pas de photo, afficher l'icône SVG
+                    icon_name = 'person' if conv['type'] == 'user' else 'group' if conv['type'] == 'group' else 'campaign'
+                    ui.html(svg(icon_name, 40, 'var(--text-secondary)'))
                 
                 # Infos
                 with ui.column().classes('gap-1 flex-1'):
@@ -321,7 +485,7 @@ class MessagingPage:
         with self.conversations_container:
             if not conversations:
                 with ui.column().classes('w-full p-8 items-center gap-3'):
-                    ui.label('📭').classes('text-5xl').style('opacity: 0.3;')
+                    ui.html(svg('mail_outline', 60, 'var(--text-secondary)'))
                     ui.label('Aucune conversation').classes('text-lg').style('color: var(--text-secondary);')
             else:
                 for conv in conversations:
@@ -373,16 +537,16 @@ class MessagingPage:
                             ui.image(conv['profile_photo']).style('width: 40px; height: 40px; border-radius: 50%; object-fit: cover;')
                         else:
                             # Fallback vers icône
-                            icon = '👤' if conv['type'] == 'user' else '👥' if conv['type'] == 'group' else '📢'
-                            ui.label(icon).classes('text-2xl')
+                            icon_name = 'person' if conv['type'] == 'user' else 'group' if conv['type'] == 'group' else 'campaign'
+                            ui.html(svg(icon_name, 28, 'var(--text-secondary)'))
                     except Exception as e:
-                        # Fallback vers icône en cas d'erreur
-                        icon = '👤' if conv['type'] == 'user' else '👥' if conv['type'] == 'group' else '📢'
-                        ui.label(icon).classes('text-2xl')
+                        # Fallback vers icône SVG en cas d'erreur
+                        icon_name = 'person' if conv['type'] == 'user' else 'group' if conv['type'] == 'group' else 'campaign'
+                        ui.html(svg(icon_name, 28, 'var(--text-secondary)'))
                 else:
-                    # Pas de photo, afficher l'icône
-                    icon = '👤' if conv['type'] == 'user' else '👥' if conv['type'] == 'group' else '📢'
-                    ui.label(icon).classes('text-2xl')
+                    # Pas de photo, afficher l'icône SVG
+                    icon_name = 'person' if conv['type'] == 'user' else 'group' if conv['type'] == 'group' else 'campaign'
+                    ui.html(svg(icon_name, 28, 'var(--text-secondary)'))
                 
                 # Contenu
                 with ui.column().classes('flex-1 gap-1 min-w-0'):
@@ -400,7 +564,7 @@ class MessagingPage:
                     
                     # Dernier message
                     last_msg = conv.get('last_message', '')
-                    prefix = '✓ ' if conv.get('last_message_from_me') else ''
+                    prefix = ''
                     ui.label(f"{prefix}{last_msg}").classes('text-xs').style(
                         'color: var(--text-secondary); white-space: nowrap; '
                         'overflow: hidden; text-overflow: ellipsis;'
@@ -431,11 +595,11 @@ class MessagingPage:
             if not messages:
                 if self.state['selected_conversation']:
                     with ui.column().classes('w-full h-full items-center justify-center gap-3'):
-                        ui.label('💬').classes('text-5xl').style('opacity: 0.3;')
+                        ui.html(svg('chat', 60, 'var(--text-secondary)'))
                         ui.label('Aucun message').classes('text-lg').style('color: var(--text-secondary);')
                 else:
                     with ui.column().classes('w-full h-full items-center justify-center gap-3'):
-                        ui.label('👈').classes('text-5xl').style('opacity: 0.3;')
+                        ui.html(svg('arrow_back', 60, 'var(--text-secondary)'))
                         ui.label('Sélectionnez une conversation').classes('text-lg').style('color: var(--text-secondary);')
             else:
                 for msg in messages:
@@ -481,19 +645,29 @@ class MessagingPage:
                         if os.path.exists(media_data):
                             ui.image(media_data).style('max-width: 500px; max-height: 400px; border-radius: 12px; cursor: pointer;')
                         else:
-                            ui.label('📷 Photo (fichier manquant)').classes('text-sm italic').style('color: var(--text-secondary);')
+                            with ui.row().classes('items-center gap-1'):
+                                ui.html(svg('photo', 18, 'var(--text-secondary)'))
+                                ui.label('Photo (fichier manquant)').classes('text-sm italic').style('color: var(--text-secondary);')
                     except Exception as e:
-                        ui.label('📷 Photo (erreur d\'affichage)').classes('text-sm italic').style('color: var(--text-secondary);')
+                        with ui.row().classes('items-center gap-1'):
+                            ui.html(svg('photo', 18, 'var(--text-secondary)'))
+                            ui.label('Photo (erreur d\'affichage)').classes('text-sm italic').style('color: var(--text-secondary);')
                 
                 # Afficher les autres types de médias
                 elif media_type == 'MessageMediaDocument':
-                    ui.label('📎 Document').classes('text-sm').style('color: var(--accent);')
+                    with ui.row().classes('items-center gap-1'):
+                        ui.html(svg('attach_file', 18, 'var(--accent)'))
+                        ui.label('Document').classes('text-sm').style('color: var(--accent);')
                     if media_caption:
                         ui.label(media_caption).classes('text-xs italic').style('color: var(--text-secondary);')
                 elif media_type == 'MessageMediaVideo':
-                    ui.label('🎥 Vidéo').classes('text-sm').style('color: var(--accent);')
+                    with ui.row().classes('items-center gap-1'):
+                        ui.html(svg('videocam', 18, 'var(--accent)'))
+                        ui.label('Vidéo').classes('text-sm').style('color: var(--accent);')
                 elif media_type == 'MessageMediaAudio':
-                    ui.label('🎵 Audio').classes('text-sm').style('color: var(--accent);')
+                    with ui.row().classes('items-center gap-1'):
+                        ui.html(svg('audiotrack', 18, 'var(--accent)'))
+                        ui.label('Audio').classes('text-sm').style('color: var(--accent);')
                 else:
                     ui.label(f'[{media_type or "Média"}]').classes('text-xs italic').style('color: var(--text-secondary);')
             
@@ -530,8 +704,8 @@ class MessagingPage:
         if self._is_loading_conversations:
             return
         
-        # Vérifier le cache persistant
-        if not force and MessagingService.is_cache_valid(max_age_minutes=30):
+        # Vérifier le cache persistant (durée étendue pour plus de rapidité)
+        if not force and MessagingService.is_cache_valid(max_age_minutes=120):  # 2 heures au lieu de 30 min
             conversations_by_account = MessagingService.load_conversations_cache()
             
             if conversations_by_account:
@@ -545,8 +719,11 @@ class MessagingPage:
                             except:
                                 conv['last_message_date'] = None
                 
-                # Fusionner les conversations
+                # Fusionner et afficher immédiatement
                 self._merge_and_display_conversations(conversations_by_account)
+                
+                # Recharger en arrière-plan pour mettre à jour
+                asyncio.create_task(self._background_refresh_conversations())
                 return
         
         # Chargement depuis l'API
@@ -560,14 +737,14 @@ class MessagingPage:
             conversations_by_account = {}
             
             # Charger les conversations en parallèle
-            import asyncio
             tasks = []
             accounts_map = {}
             
             for session_id in self.state['selected_accounts']:
                 account = self.telegram_manager.get_account(session_id)
                 if account and account.is_connected:
-                    limit = 50 if not self.state['show_groups'] else 20
+                    # Limite réduite pour un chargement plus rapide
+                    limit = 20 if not self.state['show_groups'] else 10
                     task = MessagingService.get_conversations(
                         account, 
                         limit=limit,
@@ -625,27 +802,40 @@ class MessagingPage:
             account_names=account_names
         )
         
-        # Ajouter session_id
+        # Ajouter session_id et s'assurer que account_name est défini
         for conv in all_convs:
             account_name = conv.get('account_name')
-            conv['session_id'] = account_names_to_session.get(account_name, account_name)
+            
+            # Si account_name n'est pas défini, essayer de le récupérer depuis session_id
+            if not account_name:
+                session_id = conv.get('session_id')
+                if session_id and session_id in account_names:
+                    account_name = account_names[session_id]
+                    conv['account_name'] = account_name
+            
+            # Assigner le session_id
+            if account_name and account_name in account_names_to_session:
+                conv['session_id'] = account_names_to_session[account_name]
+            else:
+                # Fallback : chercher par session_id si account_name n'est pas trouvé
+                conv['session_id'] = account_name if account_name else None
         
         self.state['all_conversations'] = all_convs
         self._apply_filters()
         
         if not hasattr(self, '_is_refreshing'):
-            notify(f'✓ {len(all_convs)} conversation(s) chargée(s)', type='positive')
+            notify(f'{len(all_convs)} conversation(s) chargée(s)', type='positive')
     
     async def _load_messages(self, chat_id: int, account_session_id: str) -> None:
         """Charge les messages d'une conversation."""
         try:
             account = self.telegram_manager.get_account(account_session_id)
             if not account or not account.is_connected:
-                ui.notify('Compte non connecté', type='negative')
+                notify('Compte non connecté', type='negative')
                 return
             
-            # Charger seulement 20 messages pour plus de rapidité
-            messages = await MessagingService.get_messages(account, chat_id, limit=20)
+            # Charger seulement 10 messages pour plus de rapidité
+            messages = await MessagingService.get_messages(account, chat_id, limit=10)
             
             self.state['messages'] = messages
             self._update_messages_display()
@@ -658,7 +848,49 @@ class MessagingPage:
             
         except Exception as e:
             logger.error(f"Erreur chargement messages: {e}")
-            ui.notify('Erreur lors du chargement des messages', type='negative')
+            notify('Erreur lors du chargement des messages', type='negative')
+    
+    async def _background_refresh_conversations(self) -> None:
+        """Rafraîchit les conversations en arrière-plan sans bloquer l'UI."""
+        try:
+            # Attendre un peu pour laisser l'UI se charger
+            await asyncio.sleep(1)
+            
+            conversations_by_account = {}
+            
+            # Charger les conversations en parallèle avec limite réduite
+            tasks = []
+            accounts_map = {}
+            
+            for session_id in self.state['selected_accounts']:
+                account = self.telegram_manager.get_account(session_id)
+                if account and account.is_connected:
+                    # Limite encore plus réduite pour le rafraîchissement en arrière-plan
+                    limit = 15 if not self.state['show_groups'] else 8
+                    task = MessagingService.get_conversations(
+                        account, 
+                        limit=limit,
+                        include_groups=self.state['show_groups']
+                    )
+                    tasks.append(task)
+                    accounts_map[len(tasks) - 1] = session_id
+            
+            if tasks:
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for idx, result in enumerate(results):
+                    if not isinstance(result, Exception):
+                        session_id = accounts_map[idx]
+                        conversations_by_account[session_id] = result
+                
+                # Sauvegarder dans le cache
+                MessagingService.save_conversations_cache(conversations_by_account)
+                
+                # Mettre à jour l'affichage si nécessaire
+                if conversations_by_account:
+                    self._merge_and_display_conversations(conversations_by_account)
+                    
+        except Exception as e:
+            logger.error(f"Erreur rafraîchissement arrière-plan: {e}")
     
     async def _refresh_conversations(self) -> None:
         """Rafraîchit les conversations automatiquement."""
@@ -701,7 +933,7 @@ class MessagingPage:
         self.state['filtered_conversations'] = filtered
         
         # Garder la conversation sélectionnée si elle est toujours visible
-        if self.state['selected_conversation']:
+        if self.state.get('selected_conversation'):
             selected_unique_id = f"{self.state['selected_conversation'].get('account_name')}_{self.state['selected_conversation']['entity_id']}"
             still_visible = any(
                 f"{conv.get('account_name')}_{conv['entity_id']}" == selected_unique_id
@@ -714,64 +946,56 @@ class MessagingPage:
         
         self._update_conversations_list()
     
-    def _handle_keydown(self, e) -> None:
-        """Gère les événements clavier dans la zone de saisie."""
-        # Vérifier si c'est la touche Entrée
-        if e.args.get('key') == 'Enter':
-            # Si Shift n'est pas pressé, envoyer le message
-            if not e.args.get('shiftKey', False):
-                # Empêcher le comportement par défaut
-                try:
-                    e.sender.prevent_default()
-                except:
-                    pass
-                
-                # Envoyer le message directement (pas en tâche asynchrone)
-                if not self.state['selected_conversation']:
-                    ui.notify('Sélectionnez une conversation', type='warning')
-                    return
-                
-                if not self.message_input.value or not self.message_input.value.strip():
-                    ui.notify('Le message ne peut pas être vide', type='warning')
-                    return
-                
-                message = self.message_input.value.strip()
-                
-                # Trouver le compte
-                conv = self.state['selected_conversation']
-                account_session_id = conv.get('session_id')
-                
-                if not account_session_id:
-                    ui.notify('Impossible de déterminer le compte', type='negative')
-                    return
-                
-                account = self.telegram_manager.get_account(account_session_id)
-                if not account or not account.is_connected:
-                    ui.notify('Compte non connecté', type='negative')
-                    return
-                
-                # Envoyer en tâche asynchrone mais avec gestion d'erreur
-                async def send_and_handle():
-                    try:
-                        success = await MessagingService.send_message(
-                            account,
-                            conv['entity_id'],
-                            message
-                        )
-                        
-                        if success:
-                            ui.notify('✓ Message envoyé', type='positive')
-                            self._add_sent_message_to_display(message)
-                            self.message_input.value = ''
-                            await self._load_messages(conv['entity_id'], account_session_id)
-                        else:
-                            ui.notify('Erreur lors de l\'envoi', type='negative')
-                    except Exception as ex:
-                        logger.error(f"Erreur envoi message: {ex}")
-                        ui.notify('Erreur lors de l\'envoi', type='negative')
-                
-                # Lancer la tâche
-                asyncio.create_task(send_and_handle())
+    async def _handle_keydown(self, e) -> None:
+        """Gère l'envoi de message avec la touche Entrée (Shift+Entrée pour nouvelle ligne)."""
+        # Si Shift est pressé, laisser le comportement par défaut (nouvelle ligne)
+        if e.args.get('shiftKey', False):
+            return
+        
+        # Vérifications de base
+        if not self.state['selected_conversation']:
+            notify('Sélectionnez une conversation', type='warning')
+            return
+        
+        if not self.message_input.value or not self.message_input.value.strip():
+            notify('Le message ne peut pas être vide', type='warning')
+            return
+        
+        message = self.message_input.value.strip()
+        
+        # Vider immédiatement pour éviter les doublons
+        self.message_input.value = ''
+        
+        # Trouver le compte
+        conv = self.state['selected_conversation']
+        account_session_id = conv.get('session_id')
+        
+        if not account_session_id:
+            notify('Impossible de déterminer le compte', type='negative')
+            return
+        
+        account = self.telegram_manager.get_account(account_session_id)
+        if not account or not account.is_connected:
+            notify('Compte non connecté', type='negative')
+            return
+        
+        # Envoyer le message
+        try:
+            success = await MessagingService.send_message(
+                account,
+                conv['entity_id'],
+                message
+            )
+            
+            if success:
+                notify('Message envoyé', type='positive')
+                self._add_sent_message_to_display(message)
+                await self._load_messages(conv['entity_id'], account_session_id)
+            else:
+                notify('Erreur lors de l\'envoi', type='negative')
+        except Exception as ex:
+            logger.error(f"Erreur envoi message: {ex}")
+            notify('Erreur lors de l\'envoi', type='negative')
     
     def _scroll_to_bottom(self) -> None:
         """Fait défiler la zone des messages vers le bas."""

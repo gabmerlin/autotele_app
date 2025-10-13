@@ -6,6 +6,7 @@ from nicegui import ui
 
 from services.sending_tasks_manager import sending_tasks_manager, SendingTask
 from ui.components.dialogs import ConfirmDialog
+from ui.components.svg_icons import svg
 from utils.logger import get_logger
 from utils.notification_manager import notify
 
@@ -25,7 +26,7 @@ class SendingTasksPage:
         with ui.column().classes('w-full gap-6 p-8'):
             # En-tête
             with ui.row().classes('items-center gap-3 mb-2'):
-                ui.label('📤').classes('text-4xl').style('color: var(--primary);')
+                ui.html(svg('send', 40, 'var(--primary)'))
                 ui.label('Envois en cours').classes('text-3xl font-bold').style(
                     'color: var(--text-primary);'
                 )
@@ -37,10 +38,12 @@ class SendingTasksPage:
             
             # Boutons d'action
             with ui.row().classes('w-full gap-3 mb-4'):
-                ui.button(
-                    '↻ Rafraîchir',
+                with ui.button(
                     on_click=self.refresh_tasks
-                ).props('outline').style('color: var(--accent);')
+                ).props('outline').style('color: var(--accent);'):
+                    with ui.row().classes('items-center gap-1'):
+                        ui.html(svg('sync', 18, 'var(--accent)'))
+                        ui.label('Rafraîchir')
                 
                 def cleanup_finished():
                     finished_tasks = [
@@ -49,13 +52,15 @@ class SendingTasksPage:
                     ]
                     for task in finished_tasks:
                         sending_tasks_manager.remove_task(task.task_id)
-                    notify(f'✓ {len(finished_tasks)} tâche(s) terminée(s) supprimée(s)', type='positive')
+                    notify(f'{len(finished_tasks)} tâche(s) terminée(s) supprimée(s)', type='positive')
                     self.refresh_tasks()
                 
-                ui.button(
-                    '🗑️ Nettoyer terminés',
+                with ui.button(
                     on_click=cleanup_finished
-                ).props('outline').style('color: var(--secondary);')
+                ).props('outline').style('color: var(--secondary);'):
+                    with ui.row().classes('items-center gap-1'):
+                        ui.html(svg('delete', 18, 'var(--secondary)'))
+                        ui.label('Nettoyer terminés')
             
             # Container pour les tâches
             self.tasks_container = ui.column().classes('w-full gap-4')
@@ -79,7 +84,7 @@ class SendingTasksPage:
             if not tasks:
                 # Aucune tâche
                 with ui.card().classes('w-full p-8 card-modern text-center'):
-                    ui.label('📭').classes('text-5xl mb-3').style('color: var(--secondary); opacity: 0.3;')
+                    ui.html(svg('mail_outline', 60, 'var(--secondary)'))
                     ui.label('Aucun envoi en cours').classes('text-xl font-bold mb-2').style(
                         'color: var(--text-secondary);'
                     )
@@ -93,18 +98,22 @@ class SendingTasksPage:
                 
                 # Tâches en cours
                 if active_tasks:
-                    ui.label(f'🔄 En cours ({len(active_tasks)})').classes(
-                        'text-lg font-bold mb-2'
-                    ).style('color: var(--primary);')
+                    with ui.row().classes('items-center gap-2 mb-2'):
+                        ui.html(svg('sync', 22, 'var(--primary)'))
+                        ui.label(f'En cours ({len(active_tasks)})').classes(
+                            'text-lg font-bold'
+                        ).style('color: var(--primary);')
                     
                     for task in active_tasks:
                         self._render_task_card(task, is_active=True)
                 
                 # Tâches terminées
                 if finished_tasks:
-                    ui.label(f'✓ Terminées ({len(finished_tasks)})').classes(
-                        'text-lg font-bold mb-2 mt-6'
-                    ).style('color: var(--success);')
+                    with ui.row().classes('items-center gap-2 mb-2 mt-6'):
+                        ui.html(svg('check_circle', 22, 'var(--success)'))
+                        ui.label(f'Terminées ({len(finished_tasks)})').classes(
+                            'text-lg font-bold'
+                        ).style('color: var(--success);')
                     
                     for task in finished_tasks:
                         self._render_task_card(task, is_active=False)
@@ -112,22 +121,23 @@ class SendingTasksPage:
     def _render_task_card(self, task: SendingTask, is_active: bool) -> None:
         """Rend une carte de tâche."""
         # Couleur selon le statut
+        from ui.components.svg_icons import svg as svg_icon
         if task.status == "en_cours":
             border_color = "var(--primary)"
             bg_color = "rgba(30, 58, 138, 0.05)"
-            status_icon = "🔄"
+            status_icon = svg_icon('sync', 22, 'var(--primary)')
             status_text = "En cours"
             status_color = "var(--primary)"
         elif task.status == "terminé":
             border_color = "var(--success)"
             bg_color = "rgba(16, 185, 129, 0.05)"
-            status_icon = "✅"
+            status_icon = svg_icon('check_circle', 22, 'var(--success)')
             status_text = "Terminé"
             status_color = "var(--success)"
         else:  # annulé
             border_color = "var(--danger)"
             bg_color = "rgba(239, 68, 68, 0.05)"
-            status_icon = "❌"
+            status_icon = svg_icon('error', 22, 'var(--danger)')
             status_text = "Annulé"
             status_color = "var(--danger)"
         
@@ -136,7 +146,7 @@ class SendingTasksPage:
         ):
             # En-tête
             with ui.row().classes('w-full items-center gap-3 mb-3'):
-                ui.label(status_icon).classes('text-2xl')
+                ui.html(status_icon)
                 with ui.column().classes('flex-1 gap-1'):
                     ui.label(task.account_name).classes('text-lg font-bold').style(
                         'color: var(--text-primary);'
@@ -179,13 +189,13 @@ class SendingTasksPage:
                             'color: var(--text-secondary); font-style: italic;'
                         )
             
-            # ⏰ Indicateur d'attente FloodWait
+            # Indicateur d'attente FloodWait
             if is_active and task.is_waiting and task.waiting_until:
                 wait_until_str = task.waiting_until.strftime('%H:%M:%S')
                 with ui.row().classes('w-full items-center gap-3 mb-3 p-3 rounded').style(
                     'background: rgba(251, 191, 36, 0.1); border: 1px solid var(--warning);'
                 ):
-                    ui.label('⏰').classes('text-2xl')
+                    ui.html(svg('alarm', 28, 'var(--warning)'))
                     with ui.column().classes('gap-1'):
                         ui.label('Respect des limites Telegram').classes('text-sm font-bold').style(
                             'color: var(--warning);'
@@ -207,17 +217,21 @@ class SendingTasksPage:
             with ui.row().classes('w-full gap-3'):
                 # Heure de début
                 started_str = task.started_at.strftime('%H:%M:%S')
-                ui.label(f'⏱ Début: {started_str}').classes('text-sm').style(
-                    'color: var(--text-secondary);'
-                )
+                with ui.row().classes('items-center gap-1'):
+                    ui.html(svg('timer', 16, 'var(--text-secondary)'))
+                    ui.label(f'Début: {started_str}').classes('text-sm').style(
+                        'color: var(--text-secondary);'
+                    )
                 
                 # Heure de fin si terminé
                 if task.finished_at:
                     finished_str = task.finished_at.strftime('%H:%M:%S')
                     duration = (task.finished_at - task.started_at).total_seconds()
-                    ui.label(f'✓ Fin: {finished_str} ({int(duration)}s)').classes('text-sm').style(
-                        'color: var(--text-secondary);'
-                    )
+                    with ui.row().classes('items-center gap-1'):
+                        ui.html(svg('check', 16, 'var(--text-secondary)'))
+                        ui.label(f'Fin: {finished_str} ({int(duration)}s)').classes('text-sm').style(
+                            'color: var(--text-secondary);'
+                        )
                 
                 ui.space()
                 
@@ -227,13 +241,13 @@ class SendingTasksPage:
                         def cancel():
                             async def on_confirm():
                                 if sending_tasks_manager.cancel_task(task_id):
-                                    notify('✓ Envoi annulé', type='warning')
+                                    notify('Envoi annulé', type='warning')
                                     self.refresh_tasks()
                                 else:
-                                    notify('❌ Impossible d\'annuler', type='negative')
+                                    notify('Impossible d\'annuler', type='negative')
                             
                             confirm = ConfirmDialog(
-                                title='⚠️ Annuler l\'envoi ?',
+                                title='Annuler l\'envoi ?',
                                 message='Les messages déjà envoyés resteront programmés.',
                                 on_confirm=on_confirm,
                                 confirm_text='Annuler l\'envoi',
@@ -242,21 +256,25 @@ class SendingTasksPage:
                             confirm.show()
                         return cancel
                     
-                    ui.button(
-                        '✕ Annuler',
+                    with ui.button(
                         on_click=make_cancel(task.task_id)
-                    ).props('flat dense').style('color: var(--danger);')
+                    ).props('flat dense').style('color: var(--danger);'):
+                        with ui.row().classes('items-center gap-1'):
+                            ui.html(svg('close', 16, 'var(--danger)'))
+                            ui.label('Annuler')
                 else:
                     # Bouton supprimer si terminé
                     def make_delete(task_id: str):
                         def delete():
                             sending_tasks_manager.remove_task(task_id)
-                            notify('✓ Tâche supprimée', type='info')
+                            notify('Tâche supprimée', type='info')
                             self.refresh_tasks()
                         return delete
                     
-                    ui.button(
-                        '🗑️ Supprimer',
+                    with ui.button(
                         on_click=make_delete(task.task_id)
-                    ).props('flat dense').style('color: var(--secondary);')
+                    ).props('flat dense').style('color: var(--secondary);'):
+                        with ui.row().classes('items-center gap-1'):
+                            ui.html(svg('delete', 16, 'var(--secondary)'))
+                            ui.label('Supprimer')
 
