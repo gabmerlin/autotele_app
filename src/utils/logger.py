@@ -4,6 +4,8 @@ Système de logs pour AutoTele avec anonymisation RGPD
 import os
 import logging
 import csv
+import re
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict
@@ -72,8 +74,22 @@ class AutoTeleLogger:
         self.logger.warning(message)
     
     def error(self, message: str, exc_info=False):
-        """Log une erreur"""
-        self.logger.error(message, exc_info=exc_info)
+        """Log une erreur avec sanitisation des données sensibles."""
+        # Sanitiser le message principal
+        sanitized_message = self._sanitize_sensitive_data(message)
+        
+        if exc_info:
+            # Capturer la stack trace complète
+            exc_text = traceback.format_exc()
+            sanitized_trace = self._sanitize_sensitive_data(exc_text)
+            
+            # Logger le message en ERROR
+            self.logger.error(sanitized_message)
+            
+            # Logger la stack trace complète en DEBUG uniquement
+            self.logger.debug(f"Stack trace:\n{sanitized_trace}")
+        else:
+            self.logger.error(sanitized_message)
     
     def debug(self, message: str):
         """Log un message debug"""
@@ -181,6 +197,60 @@ class AutoTeleLogger:
             if log_file.stat().st_mtime < cutoff:
                 log_file.unlink()
                 self.info(f"Log ancien supprimé: {log_file.name}")
+    
+    def _sanitize_sensitive_data(self, text: str) -> str:
+        """
+        Masque les données sensibles dans les logs.
+        
+        SÉCURITÉ: Retire les numéros de téléphone, chemins, tokens, etc.
+        pour éviter l'exposition de données sensibles dans les logs.
+        
+        Args:
+            text: Texte à sanitiser (message ou stack trace)
+            
+        Returns:
+            str: Texte avec données sensibles masquées
+        """
+        if not text:
+            return text
+        
+        # Masquer les numéros de téléphone (format international)
+        text = re.sub(r'\+?\d{10,15}', '+XXX...XXX', text)
+        
+        # Masquer les IDs de session
+        text = re.sub(r'session_\d+', 'session_XXX', text)
+        
+        # Masquer les chemins complets Windows
+        text = re.sub(r'[A-Z]:\\Users\\[^\\]+', r'C:\\Users\\XXX', text)
+        text = re.sub(r'[A-Z]:\\[^\\]+\\[^\\]+\\Desktop', r'C:\\XXX\\Desktop', text)
+        
+        # Masquer les chemins complets Unix
+        text = re.sub(r'/home/[^/]+', '/home/XXX', text)
+        text = re.sub(r'/Users/[^/]+', '/Users/XXX', text)
+        
+        # Masquer les tokens, clés, passwords dans les tracebacks
+        # Pattern 1: key = "value" ou key: "value"
+        text = re.sub(
+            r'(token|key|password|secret|api_id|api_hash|encryption_key)(\s*[:=]\s*["\']?)([a-zA-Z0-9_\-\.]+)',
+            r'\1\2XXX',
+            text,
+            flags=re.IGNORECASE
+        )
+        
+        # Pattern 2: 'sk_live_xxxxx' ou autres tokens longs
+        text = re.sub(
+            r'(sk_|pk_|api_)[a-zA-Z0-9_]{10,}',
+            r'\1XXX',
+            text
+        )
+        
+        # Masquer les emails
+        text = re.sub(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', 'email@XXX.com', text)
+        
+        # Masquer les adresses IP
+        text = re.sub(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', 'XXX.XXX.XXX.XXX', text)
+        
+        return text
 
 
 # Instance globale

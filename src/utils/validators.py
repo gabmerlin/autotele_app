@@ -1,5 +1,6 @@
 """Fonctions de validation pour l'application."""
 import re
+import html
 from typing import Tuple
 
 # Type alias pour les résultats de validation
@@ -109,7 +110,7 @@ def validate_verification_code(code: str,
 
 def validate_message(message: str, max_length: int = 4096) -> ValidationResult:
     """
-    Valide un message.
+    Valide un message avec vérifications de sécurité.
 
     Args:
         message: Le message à valider.
@@ -127,8 +128,59 @@ def validate_message(message: str, max_length: int = 4096) -> ValidationResult:
         return _create_error(
             f"Le message ne doit pas dépasser {max_length} caractères"
         )
+    
+    # Vérifier les caractères nuls (potentiellement dangereux)
+    if '\x00' in message or '\0' in message:
+        return _create_error("Caractères nuls non autorisés")
+    
+    # Détecter les patterns potentiellement malveillants (XSS, injection)
+    dangerous_patterns = [
+        r'<script[^>]*>',
+        r'javascript:',
+        r'onerror\s*=',
+        r'onclick\s*=',
+        r'onload\s*=',
+        r'onmouseover\s*=',
+        r'<iframe[^>]*>',
+        r'<embed[^>]*>',
+        r'<object[^>]*>',
+    ]
+    
+    message_lower = message.lower()
+    for pattern in dangerous_patterns:
+        if re.search(pattern, message_lower, re.IGNORECASE):
+            return _create_error("Contenu potentiellement malveillant détecté")
+    
+    # Vérifier les balises HTML non équilibrées
+    if message.count('<') != message.count('>'):
+        return _create_error("Balises HTML non équilibrées")
 
     return _create_success()
+
+
+def sanitize_message(message: str) -> str:
+    """
+    Sanitise un message pour éviter les injections.
+    
+    Args:
+        message: Message à sanitiser
+    
+    Returns:
+        str: Message sanitisé
+    """
+    if not message:
+        return ""
+    
+    # Échapper les caractères HTML spéciaux
+    message = html.escape(message)
+    
+    # Retirer les caractères nuls
+    message = message.replace('\x00', '').replace('\0', '')
+    
+    # Normaliser les espaces multiples
+    message = ' '.join(message.split())
+    
+    return message
 
 
 def validate_time_format(time_str: str) -> ValidationResult:

@@ -8,8 +8,13 @@ import threading
 import time
 from pathlib import Path
 
-# Ajouter le répertoire src au path
-sys.path.insert(0, str(Path(__file__).parent))
+# Ajouter le répertoire src au path (compatible PyInstaller)
+if getattr(sys, 'frozen', False):
+    # Mode compilé - les modules sont déjà dans l'exe
+    pass
+else:
+    # Mode développement
+    sys.path.insert(0, str(Path(__file__).parent))
 
 from nicegui import ui
 
@@ -88,8 +93,14 @@ def main() -> None:
     from nicegui import app as nicegui_app
     nicegui_app.add_static_files('/temp', str(temp_dir))
 
-    # Ajouter le dossier static pour les CSS
-    static_dir = Path(__file__).parent / 'ui' / 'static'
+    # Ajouter le dossier static pour les CSS (compatible PyInstaller)
+    if getattr(sys, 'frozen', False):
+        # Mode compilé - static à côté de l'exe
+        static_dir = Path(sys.executable).parent / 'ui' / 'static'
+    else:
+        # Mode développement
+        static_dir = Path(__file__).parent / 'ui' / 'static'
+    
     static_dir.mkdir(parents=True, exist_ok=True)
     nicegui_app.add_static_files('/static', str(static_dir))
 

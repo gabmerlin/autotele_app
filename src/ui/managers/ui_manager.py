@@ -174,7 +174,8 @@ class UIManager:
                 'Messagerie',
                 'chat',
                 'messagerie',
-                show_page_callback
+                show_page_callback,
+                badge='BETA'
             )
             self._create_menu_button(
                 'Nouveau Message',
@@ -200,7 +201,8 @@ class UIManager:
         label: str,
         icon: str,
         page: str,
-        show_page_callback
+        show_page_callback,
+        badge: str = None
     ) -> None:
         """Crée un bouton de menu."""
         with ui.button(
@@ -208,9 +210,17 @@ class UIManager:
         ).props('flat align=left').classes(
             'w-full sidebar-btn text-white'
         ):
-            with ui.row().classes('items-center gap-2'):
-                ui.html(svg(icon, 20, 'white'))
-                ui.label(label)
+            with ui.row().classes('items-center gap-2 justify-between w-full'):
+                with ui.row().classes('items-center gap-2'):
+                    ui.html(svg(icon, 20, 'white'))
+                    ui.label(label)
+                
+                # Badge optionnel à droite
+                if badge:
+                    ui.label(badge).classes('text-xs px-2 py-1 rounded-full').style(
+                        'background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); '
+                        'color: white; font-weight: bold; font-size: 0.7rem;'
+                    )
 
     def render_subscription_required_screen(
         self,

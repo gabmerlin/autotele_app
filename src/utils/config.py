@@ -12,7 +12,71 @@ load_dotenv()
 
 
 class Config:
-    """Gestionnaire de configuration"""
+    """Gestionnaire de configuration avec validation."""
+    
+    # Règles de validation pour les valeurs de configuration
+    VALIDATION_RULES = {
+        'telegram.rate_limit_delay': {
+            'type': (int, float),
+            'min': 0.01,
+            'max': 60,
+            'description': 'Délai entre les requêtes (secondes)'
+        },
+        'telegram.max_messages_per_minute': {
+            'type': int,
+            'min': 1,
+            'max': 100,
+            'description': 'Nombre maximum de messages par minute'
+        },
+        'telegram.max_groups_warning': {
+            'type': int,
+            'min': 1,
+            'max': 10000,
+            'description': 'Seuil d\'avertissement pour le nombre de groupes'
+        },
+        'telegram.max_parallel_tasks': {
+            'type': int,
+            'min': 1,
+            'max': 20,
+            'description': 'Nombre maximum de tâches parallèles'
+        },
+        'telegram.scheduler_interval': {
+            'type': (int, float),
+            'min': 0.1,
+            'max': 60,
+            'description': 'Intervalle du planificateur (secondes)'
+        },
+        'btcpay.subscription_price': {
+            'type': (int, float),
+            'min': 0.01,
+            'max': 100000,
+            'description': 'Prix de l\'abonnement'
+        },
+        'btcpay.trial_days': {
+            'type': int,
+            'min': 0,
+            'max': 365,
+            'description': 'Jours d\'essai gratuit'
+        },
+        'btcpay.check_interval_hours': {
+            'type': (int, float),
+            'min': 0.1,
+            'max': 720,
+            'description': 'Intervalle de vérification (heures)'
+        },
+        'security.auto_logout_minutes': {
+            'type': int,
+            'min': 0,
+            'max': 1440,
+            'description': 'Déconnexion automatique (minutes, 0=désactivé)'
+        },
+        'ui.font_size': {
+            'type': int,
+            'min': 6,
+            'max': 72,
+            'description': 'Taille de police'
+        },
+    }
     
     DEFAULT_CONFIG = {
         "app": {
@@ -60,13 +124,16 @@ class Config:
         self.config = self._load_config()
     
     def _load_config(self) -> Dict[str, Any]:
-        """Charge la configuration depuis le fichier"""
+        """Charge la configuration depuis le fichier avec validation."""
         if self.config_file.exists():
             try:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     loaded = json.load(f)
                     # Merge avec les valeurs par défaut
-                    return self._merge_configs(self.DEFAULT_CONFIG.copy(), loaded)
+                    merged = self._merge_configs(self.DEFAULT_CONFIG.copy(), loaded)
+                    # Valider la configuration
+                    self._validate_config(merged)
+                    return merged
             except Exception as e:
                 print(f"Erreur lors du chargement de la config: {e}")
                 return self.DEFAULT_CONFIG.copy()
@@ -108,9 +175,13 @@ class Config:
     
     def set(self, key_path: str, value: Any):
         """
-        Définit une valeur de configuration
+        Définit une valeur de configuration avec validation.
         Ex: config.set("btcpay.server_url", "https://...")
         """
+        # Valider la valeur avant de l'affecter
+        if not self._validate_value(key_path, value):
+            raise ValueError(f"Valeur invalide pour {key_path}: {value}")
+        
         keys = key_path.split('.')
         config = self.config
         
@@ -121,6 +192,115 @@ class Config:
         
         config[keys[-1]] = value
         self._save_config(self.config)
+    
+    def _validate_config(self, config: Dict[str, Any]) -> bool:
+        """
+        Valide l'ensemble de la configuration.
+        
+        Args:
+            config: Configuration à valider
+        
+        Returns:
+            bool: True si valide
+        """
+        is_valid = True
+        
+        for key_path, rules in self.VALIDATION_RULES.items():
+            value = self._get_nested_value(config, key_path)
+            
+            if value is not None:
+                if not self._validate_value(key_path, value, silent=True):
+                    is_valid = False
+                    # Remplacer par la valeur par défaut
+                    default_value = self._get_nested_value(self.DEFAULT_CONFIG, key_path)
+                    if default_value is not None:
+                        print(f"⚠️ Config invalide pour {key_path}, utilisation de la valeur par défaut: {default_value}")
+                        self._set_nested_value(config, key_path, default_value)
+        
+        return is_valid
+    
+    def _validate_value(self, key_path: str, value: Any, silent: bool = False) -> bool:
+        """
+        Valide une valeur de configuration selon les règles.
+        
+        Args:
+            key_path: Chemin de la clé (ex: "telegram.rate_limit_delay")
+            value: Valeur à valider
+            silent: Si True, ne log pas les erreurs
+        
+        Returns:
+            bool: True si la valeur est valide
+        """
+        # Si pas de règle de validation, accepter la valeur
+        if key_path not in self.VALIDATION_RULES:
+            return True
+        
+        rules = self.VALIDATION_RULES[key_path]
+        description = rules.get('description', key_path)
+        
+        # Validation du type
+        expected_type = rules.get('type')
+        if expected_type:
+            # Gérer le cas où plusieurs types sont acceptés
+            if isinstance(expected_type, tuple):
+                if not isinstance(value, expected_type):
+                    if not silent:
+                        print(f"❌ {description}: type invalide (attendu {expected_type}, obtenu {type(value).__name__})")
+                    return False
+            else:
+                if not isinstance(value, expected_type):
+                    if not silent:
+                        print(f"❌ {description}: type invalide (attendu {expected_type.__name__}, obtenu {type(value).__name__})")
+                    return False
+        
+        # Validation de la valeur minimale
+        if 'min' in rules:
+            if value < rules['min']:
+                if not silent:
+                    print(f"❌ {description}: valeur trop petite (min: {rules['min']}, obtenu: {value})")
+                return False
+        
+        # Validation de la valeur maximale
+        if 'max' in rules:
+            if value > rules['max']:
+                if not silent:
+                    print(f"❌ {description}: valeur trop grande (max: {rules['max']}, obtenu: {value})")
+                return False
+        
+        # Validation de pattern regex
+        if 'pattern' in rules and isinstance(value, str):
+            import re
+            if not re.match(rules['pattern'], value):
+                if not silent:
+                    print(f"❌ {description}: format invalide (pattern: {rules['pattern']})")
+                return False
+        
+        return True
+    
+    def _get_nested_value(self, config: Dict, key_path: str) -> Any:
+        """Récupère une valeur imbriquée dans la config."""
+        keys = key_path.split('.')
+        value = config
+        
+        for key in keys:
+            if isinstance(value, dict) and key in value:
+                value = value[key]
+            else:
+                return None
+        
+        return value
+    
+    def _set_nested_value(self, config: Dict, key_path: str, value: Any):
+        """Définit une valeur imbriquée dans la config."""
+        keys = key_path.split('.')
+        current = config
+        
+        for key in keys[:-1]:
+            if key not in current:
+                current[key] = {}
+            current = current[key]
+        
+        current[keys[-1]] = value
     
     def get_supabase_config(self) -> Dict[str, str]:
         """

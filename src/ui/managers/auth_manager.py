@@ -212,14 +212,31 @@ class AuthManager:
                 subscription_changed = True
 
             if subscription_changed:
-                ui.timer(0.1, self.update_subscription_status_display, once=True)
+                # Mettre à jour l'affichage via un wrapper qui gère le contexte UI
+                try:
+                    ui.timer(0.1, self.update_subscription_status_display, once=True)
+                except Exception as timer_error:
+                    # Si on est dans un contexte sans slot UI, appeler directement
+                    logger.debug(f"Appel direct de update_subscription_status_display (pas de slot UI): {timer_error}")
+                    try:
+                        self.update_subscription_status_display()
+                    except Exception:
+                        pass  # Ignorer silencieusement si l'UI n'est pas prête
 
                 if new_exists and not old_has_subscription:
-                    ui.timer(
-                        0.5,
-                        lambda: self._reload_interface_after_payment(),
-                        once=True
-                    )
+                    try:
+                        ui.timer(
+                            0.5,
+                            lambda: self._reload_interface_after_payment(),
+                            once=True
+                        )
+                    except Exception as timer_error:
+                        # Si on est dans un contexte sans slot UI, appeler directement
+                        logger.debug(f"Appel direct de _reload_interface_after_payment (pas de slot UI): {timer_error}")
+                        try:
+                            self._reload_interface_after_payment()
+                        except Exception:
+                            pass  # Ignorer silencieusement si l'UI n'est pas prête
         except Exception as e:
             logger.error(
                 f"Erreur lors du rafraîchissement auto du statut: {e}"

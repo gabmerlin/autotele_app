@@ -51,6 +51,7 @@ config/api_credentials.py
 config/.user_session
 config/.subscription_status
 config/app_config.json
+config/.encryption_salt
 
 # Windows
 Thumbs.db

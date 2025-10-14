@@ -10,8 +10,17 @@ from utils.logger import get_logger
 
 logger = get_logger()
 
-# Charger le fichier .env dès l'import de ce module
-ENV_PATH = Path(__file__).parent.parent.parent.parent / '.env'
+# Charger le fichier .env dès l'import de ce module (compatible PyInstaller)
+def get_env_path() -> Path:
+    """Retourne le chemin du fichier .env (compatible PyInstaller)."""
+    if getattr(sys, 'frozen', False):
+        # Exécutable compilé - .env à côté de l'exe
+        return Path(sys.executable).parent / '.env'
+    else:
+        # Mode développement - .env à la racine du projet
+        return Path(__file__).parent.parent.parent.parent / '.env'
+
+ENV_PATH = get_env_path()
 load_dotenv(dotenv_path=ENV_PATH)
 
 
@@ -47,9 +56,13 @@ def get_api_credentials() -> Tuple[int, str]:
 
     # 2. Essayer le fichier de config
     try:
-        config_dir = (
-            Path(__file__).parent.parent.parent.parent / "config"
-        )
+        if getattr(sys, 'frozen', False):
+            # Mode compilé
+            config_dir = Path(sys.executable).parent / "config"
+        else:
+            # Mode développement
+            config_dir = Path(__file__).parent.parent.parent.parent / "config"
+        
         sys.path.insert(0, str(config_dir))
 
         from api_credentials import API_HASH, API_ID

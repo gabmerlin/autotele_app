@@ -21,19 +21,17 @@ class SessionManager:
         self.index_file = self.sessions_dir / "sessions_index.json"
         self.sessions_index = self._load_index()
 
-        # Système de chiffrement - Désactivé pour stabilité
-        # Le module est disponible dans src/utils/encryption.py
-        # Pour activer : décommenter le code ci-dessous
-        self.encryption = None
-
-        # Pour réactiver le chiffrement AES-256:
-        # try:
-        #     from utils.encryption import get_encryption
-        #     self.encryption = get_encryption()
-        #     self.logger.info("Chiffrement des sessions activé (AES-256)")
-        # except ValueError as e:
-        #     self.logger.warning(f"Chiffrement désactivé: {e}")
-        #     self.encryption = None
+        # Système de chiffrement AES-256 (SÉCURITÉ CRITIQUE)
+        # ⚠️ Les sessions Telegram DOIVENT être chiffrées pour éviter le vol de comptes
+        try:
+            from utils.encryption import get_encryption
+            self.encryption = get_encryption()
+            self.logger.info("🔒 Chiffrement des sessions activé (AES-256 + PBKDF2)")
+        except ValueError as e:
+            self.logger.error(f"❌ ERREUR CRITIQUE: Chiffrement désactivé - {e}")
+            self.logger.error("⚠️ Les sessions sont stockées EN CLAIR - RISQUE DE SÉCURITÉ ÉLEVÉ")
+            self.logger.error("📋 Veuillez définir AUTOTELE_ENCRYPTION_KEY dans votre fichier .env")
+            self.encryption = None
     
     def _load_index(self) -> Dict:
         """Charge l'index des sessions depuis le fichier JSON."""

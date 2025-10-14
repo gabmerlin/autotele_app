@@ -72,6 +72,10 @@ class AutoTeleApp:
             self.is_loading_accounts = False
 
             await self.show_page(self.current_page)
+            
+            # Vérifier les mises à jour après 5 secondes (non bloquant)
+            ui.timer(5.0, lambda: asyncio.create_task(self.check_for_updates()), once=True)
+            
         except Exception as e:
             logger.error(f"Erreur initialisation: {e}")
             self.ui_manager.update_loading_progress(100, f"Erreur: {e}")
@@ -278,4 +282,65 @@ class AutoTeleApp:
                 lambda: asyncio.create_task(self._show_auth_or_app()),
                 once=True
             )
+    
+    async def check_for_updates(self):
+        """
+        Vérifie les mises à jour au démarrage.
+        
+        Affiche une notification si une mise à jour est disponible.
+        """
+        try:
+            from utils.updater import get_updater
+            import webbrowser
+            
+            updater = get_updater()
+            
+            # Vérifier (non bloquant)
+            update_available, message = await updater.check_for_updates(use_github=True)
+            
+            if update_available:
+                logger.info("Mise à jour disponible")
+                
+                # Afficher dialogue de mise à jour
+                with ui.dialog().props('persistent') as update_dialog:
+                    with ui.card().classes('p-6 max-w-md'):
+                        from ui.components.svg_icons import svg
+                        ui.html(svg('system_update', 64, '#3b82f6'))
+                        
+                        ui.label('🚀 Mise à jour disponible').classes(
+                            'text-2xl font-bold mb-3 mt-2'
+                        )
+                        
+                        ui.label(message).classes(
+                            'text-gray-700 mb-4 whitespace-pre-line text-sm'
+                        )
+                        
+                        if updater.is_update_required():
+                            ui.label('⚠️ Cette mise à jour est OBLIGATOIRE').classes(
+                                'text-red-600 font-bold mb-4'
+                            )
+                        
+                        with ui.row().classes('gap-3 w-full'):
+                            def open_download():
+                                download_url = updater.get_download_url()
+                                if download_url:
+                                    webbrowser.open(download_url)
+                                    ui.notify('Page de téléchargement ouverte', type='positive')
+                                update_dialog.close()
+                            
+                            ui.button(
+                                'Télécharger maintenant',
+                                on_click=open_download
+                            ).props('color=primary size=md').classes('flex-1')
+                            
+                            if not updater.is_update_required():
+                                ui.button(
+                                    'Plus tard',
+                                    on_click=update_dialog.close
+                                ).props('flat size=md')
+                
+                update_dialog.open()
+        except Exception as e:
+            # Erreur silencieuse (pas critique)
+            logger.debug(f"Vérification mise à jour échouée: {e}")
 

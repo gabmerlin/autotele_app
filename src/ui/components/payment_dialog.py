@@ -90,7 +90,7 @@ class PaymentDialog:
                         .style('background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 12px;'):
                         ui.label('Abonnement mensuel').classes('text-sm font-medium').style('color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;')
                         ui.label(price_display).classes('text-4xl font-bold mt-2').style('color: #1e3a8a;')
-                        ui.label('Renouvelé automatiquement chaque mois').classes('text-xs mt-2').style('color: #64748b;')
+                        ui.label('Non renouvelé automatiquement').classes('text-xs mt-2 font-semibold').style('color: #10b981;')
                     
                     # Features
                     with ui.column().classes('gap-3 mt-2'):
@@ -154,17 +154,8 @@ class PaymentDialog:
                     self.status_spinner = ui.spinner('dots', size='md').style('color: #3b82f6;')
                     self.status_label = ui.label('En attente de votre paiement...').classes('text-sm font-medium').style('color: #1e40af;')
                 
-                ui.button(icon='refresh', on_click=self._manual_check) \
-                    .props('flat round dense') \
-                    .style('color: #3b82f6;') \
-                    .tooltip('Vérifier manuellement')
-            
-            # BOUTON ANNULER
-            with ui.row().classes('w-full justify-center mt-2'):
-                ui.button('Annuler', icon='close', on_click=self._handle_cancel) \
-                    .props('outline') \
-                    .classes('px-8') \
-                    .style('color: #64748b; border-color: #cbd5e1; border-radius: 8px; font-weight: 500;')
+                with ui.button(on_click=self._manual_check).props('flat round dense').style('color: #3b82f6;'):
+                    ui.html(svg('sync', 20, '#3b82f6')).tooltip('Vérifier manuellement')
             
     
     async def _auto_check_status(self):
@@ -189,10 +180,18 @@ class PaymentDialog:
                         await self._handle_payment_success()
                         break
                     elif status in ['Expired', 'Invalid']:
-                        # Paiement échoué
-                        self.status_label.text = 'Paiement expiré ou invalide'
-                        self.status_label.classes('text-red-600 font-semibold')
-                        self.status_spinner.visible = False
+                        # Paiement échoué - mettre à jour l'UI via timer
+                        def update_ui_failed():
+                            try:
+                                if hasattr(self, 'status_label'):
+                                    self.status_label.text = 'Paiement expiré ou invalide'
+                                    self.status_label.classes('text-red-600 font-semibold')
+                                if hasattr(self, 'status_spinner'):
+                                    self.status_spinner.visible = False
+                            except Exception as ui_error:
+                                logger.error(f"Erreur mise à jour UI: {ui_error}")
+                        
+                        ui.timer(0.1, update_ui_failed, once=True)
                         break
         
         except Exception as e:

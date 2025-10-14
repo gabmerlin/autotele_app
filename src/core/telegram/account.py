@@ -564,4 +564,55 @@ class TelegramAccount:
             error_msg = f"Erreur suppression messages: {e}"
             logger.error(error_msg)
             return False, error_msg
+    
+    async def resolve_username(self, username: str) -> Optional[Dict]:
+        """
+        Résout un username et retourne les infos de base de l'entité.
+        
+        Args:
+            username: Username à résoudre (avec ou sans @)
+            
+        Returns:
+            Optional[Dict]: Infos de l'entité (id, title, type, username) ou None
+        """
+        if not self.is_connected:
+            return None
+        
+        try:
+            from telethon.tl.types import User
+            
+            # Nettoyer l'username
+            clean_username = username.lstrip('@').strip()
+            
+            if not clean_username:
+                return None
+            
+            # Résoudre l'entité
+            entity = await self.client.get_entity(clean_username)
+            
+            # Déterminer le type et construire le titre
+            if isinstance(entity, User):
+                entity_type = "user"
+                first_name = getattr(entity, 'first_name', '') or ''
+                last_name = getattr(entity, 'last_name', '') or ''
+                title = f"{first_name} {last_name}".strip() or clean_username
+            elif isinstance(entity, Channel):
+                entity_type = "channel"
+                title = getattr(entity, 'title', clean_username)
+            elif isinstance(entity, Chat):
+                entity_type = "group"
+                title = getattr(entity, 'title', clean_username)
+            else:
+                return None
+            
+            return {
+                "id": entity.id,
+                "title": title,
+                "type": entity_type,
+                "username": getattr(entity, 'username', None) or clean_username,
+            }
+            
+        except Exception as e:
+            logger.error(f"Erreur résolution username {username}: {e}")
+            return None
 

@@ -23,12 +23,11 @@ logger = get_logger()
 class SessionEncryption:
     """Gère le chiffrement et déchiffrement des sessions Telegram."""
     
-    # Salt fixe pour la dérivation de clé (doit rester constant)
-    # En production, pourrait être stocké dans une base de données
-    SALT = b'autotele_session_encryption_v1_salt_2025'
-    
     # Nombre d'itérations pour PBKDF2 (100k = bon compromis sécurité/performance)
     ITERATIONS = 100_000
+    
+    # Chemin du fichier de salt (unique par installation)
+    SALT_FILE = Path("config/.encryption_salt")
     
     def __init__(self, encryption_key: Optional[str] = None):
         """
@@ -52,7 +51,66 @@ class SessionEncryption:
             )
         
         self.encryption_key = encryption_key
+        
+        # Récupérer ou créer un salt unique pour cette installation
+        self.salt = self._get_or_create_salt()
+        
         self._fernet = self._derive_fernet_key(encryption_key)
+    
+    def _get_or_create_salt(self) -> bytes:
+        """
+        Récupère ou crée un salt unique pour cette installation.
+        
+        SÉCURITÉ: Le salt est généré aléatoirement une seule fois et stocké
+        de manière sécurisée. Cela évite les attaques par rainbow tables.
+        
+        Returns:
+            bytes: Salt de 32 bytes
+        """
+        try:
+            # Vérifier si le salt existe déjà
+            if self.SALT_FILE.exists():
+                with open(self.SALT_FILE, 'rb') as f:
+                    salt = f.read()
+                
+                # Valider la longueur
+                if len(salt) == 32:
+                    logger.debug("Salt de chiffrement chargé depuis le fichier")
+                    return salt
+                else:
+                    logger.warning(f"Salt corrompu (longueur: {len(salt)}), régénération...")
+            
+            # Générer un nouveau salt aléatoire (cryptographiquement sécurisé)
+            import secrets
+            new_salt = secrets.token_bytes(32)
+            
+            # Créer le répertoire si nécessaire
+            self.SALT_FILE.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Stocker le salt
+            with open(self.SALT_FILE, 'wb') as f:
+                f.write(new_salt)
+            
+            # Permissions restrictives (Windows et Unix)
+            try:
+                from utils.file_permissions import FilePermissions
+                success, msg = FilePermissions.set_secure_file_permissions(self.SALT_FILE)
+                if success:
+                    logger.debug(f"Permissions salt sécurisées: {msg}")
+                else:
+                    logger.warning(f"Permissions salt non appliquées: {msg}")
+            except Exception as perm_error:
+                logger.warning(f"Impossible de définir les permissions du salt: {perm_error}")
+            
+            logger.info("🔑 Nouveau salt de chiffrement généré et sauvegardé")
+            return new_salt
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la gestion du salt: {e}")
+            # Fallback: générer un salt temporaire (moins sécurisé)
+            logger.warning("⚠️ Utilisation d'un salt temporaire (non persistant)")
+            import secrets
+            return secrets.token_bytes(32)
     
     def _derive_fernet_key(self, password: str) -> Fernet:
         """
@@ -67,7 +125,7 @@ class SessionEncryption:
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,  # 256 bits
-            salt=self.SALT,
+            salt=self.salt,  # Utilise le salt unique
             iterations=self.ITERATIONS
         )
         

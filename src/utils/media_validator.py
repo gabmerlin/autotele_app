@@ -75,6 +75,130 @@ class MediaValidator:
     """Validateur de médias pour les téléchargements sécurisés."""
     
     @staticmethod
+    def get_real_mime_type(file_path: str) -> str:
+        """
+        Détecte le VRAI type MIME d'un fichier via les magic bytes.
+        
+        SÉCURITÉ: Vérifie le contenu réel du fichier, pas juste l'extension.
+        Cela évite les fichiers malveillants déguisés (ex: .exe renommé en .jpg)
+        
+        Args:
+            file_path: Chemin du fichier
+            
+        Returns:
+            str: Type MIME détecté ou 'application/octet-stream'
+        """
+        try:
+            with open(file_path, 'rb') as f:
+                header = f.read(32)  # Lire les 32 premiers bytes
+            
+            if len(header) < 4:
+                return 'application/octet-stream'
+            
+            # Images
+            if header.startswith(b'\xff\xd8\xff'):
+                return 'image/jpeg'
+            elif header.startswith(b'\x89PNG\r\n\x1a\n'):
+                return 'image/png'
+            elif header.startswith(b'GIF89a') or header.startswith(b'GIF87a'):
+                return 'image/gif'
+            elif header.startswith(b'RIFF') and header[8:12] == b'WEBP':
+                return 'image/webp'
+            elif header.startswith(b'BM'):
+                return 'image/bmp'
+            
+            # Documents
+            elif header.startswith(b'%PDF'):
+                return 'application/pdf'
+            elif header.startswith(b'PK\x03\x04'):
+                # ZIP ou documents Office (docx, xlsx)
+                if b'word/' in header or b'xl/' in header:
+                    return 'application/vnd.openxmlformats-officedocument'
+                return 'application/zip'
+            elif header.startswith(b'\xd0\xcf\x11\xe0'):
+                # Format Microsoft Office ancien (doc, xls)
+                return 'application/msword'
+            
+            # Audio
+            elif header.startswith(b'ID3') or header.startswith(b'\xff\xfb'):
+                return 'audio/mpeg'
+            elif header.startswith(b'RIFF') and header[8:12] == b'WAVE':
+                return 'audio/wav'
+            elif header.startswith(b'OggS'):
+                return 'audio/ogg'
+            
+            # Vidéo
+            elif header[4:8] == b'ftyp':
+                # MP4, MOV, M4V
+                return 'video/mp4'
+            elif header.startswith(b'RIFF') and header[8:12] == b'AVI ':
+                return 'video/x-msvideo'
+            elif header.startswith(b'\x1a\x45\xdf\xa3'):
+                return 'video/webm'
+            
+            # Archives
+            elif header.startswith(b'Rar!\x1a\x07'):
+                return 'application/x-rar-compressed'
+            elif header.startswith(b'\x1f\x8b'):
+                return 'application/gzip'
+            
+            # ⚠️ FICHIERS DANGEREUX À BLOQUER
+            elif header.startswith(b'MZ'):
+                # Exécutable Windows (.exe, .dll, .sys)
+                return 'application/x-msdownload'
+            elif header.startswith(b'\x7fELF'):
+                # Exécutable Linux/Unix
+                return 'application/x-executable'
+            elif header.startswith(b'#!'):
+                # Script shell
+                return 'application/x-sh'
+            
+        except Exception as e:
+            logger.debug(f"Erreur lecture magic bytes: {e}")
+        
+        return 'application/octet-stream'
+    
+    @staticmethod
+    def is_mime_type_compatible(real_mime: str, expected_mime: str) -> bool:
+        """
+        Vérifie si deux types MIME sont compatibles.
+        
+        Args:
+            real_mime: Type MIME réel (détecté via magic bytes)
+            expected_mime: Type MIME attendu (déclaré)
+            
+        Returns:
+            bool: True si compatibles
+        """
+        if not real_mime or not expected_mime:
+            return True  # Si on ne peut pas vérifier, on accepte
+        
+        # Normaliser
+        real_mime = real_mime.lower().strip()
+        expected_mime = expected_mime.lower().strip()
+        
+        # Correspondance exacte
+        if real_mime == expected_mime:
+            return True
+        
+        # Catégories compatibles (même préfixe)
+        real_category = real_mime.split('/')[0]
+        expected_category = expected_mime.split('/')[0]
+        
+        if real_category == expected_category:
+            return True  # image/jpeg vs image/jpg OK
+        
+        # Cas spéciaux
+        compatible_pairs = [
+            ('image/jpg', 'image/jpeg'),
+            ('image/jpeg', 'image/jpg'),
+            ('application/zip', 'application/vnd.openxmlformats-officedocument'),
+        ]
+        
+        return (real_mime, expected_mime) in compatible_pairs or \
+               (expected_mime, real_mime) in compatible_pairs
+    
+    @staticmethod
     def validate_file_size(size: int, max_size: int = DEFAULT_MAX_SIZE) -> Tuple[bool, str]:
         """
         Valide la taille d'un fichier.
@@ -289,8 +413,40 @@ class MediaValidator:
                 )
                 
                 if file_path:
-                    # Vérification finale du fichier téléchargé
+                    # Vérifications post-téléchargement
                     downloaded_size = os.path.getsize(file_path)
+                    
+                    # 1. Vérifier la taille correspond
+                    expected_size = info.get('size', 0)
+                    if expected_size > 0:
+                        # Tolérance de 1KB pour les variations
+                        if abs(downloaded_size - expected_size) > 1024:
+                            os.remove(file_path)
+                            return False, None, "Taille du fichier incorrecte (possible corruption)"
+                    
+                    # 2. Vérifier le VRAI type MIME (magic bytes)
+                    real_mime = MediaValidator.get_real_mime_type(file_path)
+                    expected_mime = info.get('mime_type')
+                    
+                    # Bloquer les exécutables et scripts
+                    dangerous_types = [
+                        'application/x-msdownload',  # .exe Windows
+                        'application/x-executable',   # Binaires Linux
+                        'application/x-sh',           # Scripts shell
+                    ]
+                    
+                    if real_mime in dangerous_types:
+                        os.remove(file_path)
+                        logger.warning(f"🚫 Fichier exécutable bloqué: {real_mime}")
+                        return False, None, "Type de fichier interdit (exécutable ou script)"
+                    
+                    # 3. Vérifier cohérence MIME déclaré vs réel
+                    if expected_mime and not MediaValidator.is_mime_type_compatible(real_mime, expected_mime):
+                        os.remove(file_path)
+                        logger.warning(f"🚫 MIME incohérent: attendu {expected_mime}, obtenu {real_mime}")
+                        return False, None, f"Type MIME incohérent (possible fichier déguisé)"
+                    
+                    logger.debug(f"✅ Fichier vérifié: {real_mime} ({downloaded_size} bytes)")
                     return True, file_path, ""
                 else:
                     return False, None, "Échec du téléchargement"

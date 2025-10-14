@@ -1,11 +1,32 @@
 """Gestion centralisée des chemins de l'application."""
+import sys
 from pathlib import Path
 from typing import Final
 
-# Racine du projet
-PROJECT_ROOT: Final[Path] = Path(__file__).parent.parent.parent
 
-# Répertoires principaux
+def get_application_path() -> Path:
+    """
+    Retourne le chemin racine de l'application.
+    
+    Compatible avec PyInstaller (exécutable compilé) et mode développement.
+    
+    Returns:
+        Path: Chemin racine de l'application
+    """
+    if getattr(sys, 'frozen', False):
+        # Application compilée avec PyInstaller
+        # sys.executable pointe vers AutoTele.exe
+        # On retourne le répertoire parent (où se trouve l'exe)
+        return Path(sys.executable).parent
+    else:
+        # Mode développement (script Python)
+        return Path(__file__).parent.parent.parent
+
+
+# Racine du projet (compatible PyInstaller)
+PROJECT_ROOT: Final[Path] = get_application_path()
+
+# Répertoires principaux (créés dynamiquement à côté de l'exe)
 TEMP_DIR: Final[Path] = PROJECT_ROOT / 'temp'
 SESSIONS_DIR: Final[Path] = PROJECT_ROOT / 'sessions'
 LOGS_DIR: Final[Path] = PROJECT_ROOT / 'logs'

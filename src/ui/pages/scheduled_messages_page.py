@@ -29,6 +29,8 @@ class ScheduledMessagesPage:
         self.selected_account: Optional[str] = None
         self.messages_container: Optional[ui.column] = None
         self.current_messages: List[Dict] = []
+        self.selected_chat_id: Optional[int] = None  # Filtre par groupe
+        self.groups_menu_container: Optional[ui.row] = None  # Container pour le menu des groupes
     
     def render(self) -> None:
         """Rend la page."""
@@ -102,6 +104,9 @@ class ScheduledMessagesPage:
         if not self.selected_account:
             return
         
+        # Réinitialiser le filtre de groupe quand on change de compte
+        self.selected_chat_id = None
+        
         self.messages_container.clear()
         
         with self.messages_container:
@@ -152,22 +157,33 @@ class ScheduledMessagesPage:
                 # Boutons d'action
                 with ui.row().classes('w-full gap-3 mb-4'):
                     async def refresh() -> None:
-                        notify(f'{ICON_REFRESH} Rechargement...', type='info')
+                        ui.notify('Rechargement...', type='info')
                         await self.load_scheduled_messages()
                     
-                    ui.button(f'{ICON_REFRESH} Rafraîchir', on_click=refresh).props('outline').style(
-                        'color: var(--accent);'
-                    )
+                    with ui.button(on_click=refresh).props('outline').style('color: var(--accent);'):
+                        with ui.row().classes('items-center gap-2'):
+                            ui.html(svg('sync', 18, 'var(--accent)'))
+                            ui.label('Rafraîchir')
                     
-                    ui.button(
-                        'Tout supprimer (TOUS)',
-                        icon='delete_forever',
-                        on_click=self._delete_all_everywhere
-                    ).props('color=red')
+                    with ui.button(on_click=self._delete_all_everywhere).props('color=red'):
+                        with ui.row().classes('items-center gap-2'):
+                            ui.html(svg('delete_forever', 18, 'white'))
+                            ui.label('Tout supprimer (TOUS)')
                 
-                # Grouper par chat
+                # Menu de filtrage par groupe
+                self._render_groups_filter_menu()
+                
+                # Filtrer les messages selon le groupe sélectionné
+                filtered_messages = self.current_messages
+                if self.selected_chat_id is not None:
+                    filtered_messages = [
+                        msg for msg in self.current_messages 
+                        if msg['chat_id'] == self.selected_chat_id
+                    ]
+                
+                # Grouper par chat (utiliser les messages filtrés)
                 chats_dict: Dict[int, Dict] = {}
-                for msg in self.current_messages:
+                for msg in filtered_messages:
                     chat_id = msg['chat_id']
                     if chat_id not in chats_dict:
                         chats_dict[chat_id] = {
@@ -180,9 +196,19 @@ class ScheduledMessagesPage:
                 with ui.card().classes('w-full p-5 mb-4').style(
                     'background: #ecfdf5; border-left: 3px solid var(--success);'
                 ):
-                    ui.label(
-                        f'{len(self.current_messages)} message(s) programmé(s) dans {len(chats_dict)} groupe(s)'
-                    ).classes('text-lg font-bold').style('color: #065f46;')
+                    if self.selected_chat_id is None:
+                        ui.label(
+                            f'{len(self.current_messages)} message(s) programmé(s) dans {len(chats_dict)} groupe(s)'
+                        ).classes('text-lg font-bold').style('color: #065f46;')
+                    else:
+                        # Afficher le nom du groupe filtré
+                        filtered_chat_title = next(
+                            (msg['chat_title'] for msg in filtered_messages if msg['chat_id'] == self.selected_chat_id),
+                            "Groupe inconnu"
+                        )
+                        ui.label(
+                            f'{len(filtered_messages)} message(s) dans "{filtered_chat_title}"'
+                        ).classes('text-lg font-bold').style('color: #065f46;')
                 
                 # Afficher par groupe
                 for chat_id, chat_data in chats_dict.items():
@@ -212,25 +238,27 @@ class ScheduledMessagesPage:
                     'px-3 py-1 rounded text-sm font-semibold'
                 ).style('background: rgba(30, 58, 138, 0.1); color: var(--primary);')
                 
-                def make_delete_all(cid: int, title: str):
+                def make_delete_all(cid: int, title: str, acc, messages: List[Dict]):
+                    async def on_confirm() -> None:
+                        try:
+                            ui.notify('Suppression en cours...', type='info')
+                            # Extraire tous les IDs des messages de ce groupe
+                            message_ids = [msg['message_id'] for msg in messages]
+                            success, error = await acc.delete_scheduled_messages(cid, message_ids)
+                            if success:
+                                ui.notify(f'{len(message_ids)} message(s) supprimé(s) !', type='positive')
+                                self.current_messages = [
+                                    msg for msg in self.current_messages
+                                    if msg['chat_id'] != cid
+                                ]
+                                self.display_messages()
+                            else:
+                                ui.notify(f'Erreur: {error}', type='negative')
+                        except Exception as e:
+                            logger.error(f"Erreur suppression: {e}")
+                            ui.notify(f'Erreur: {e}', type='negative')
+                    
                     def delete_all() -> None:
-                        async def on_confirm() -> None:
-                            try:
-                                notify('Suppression en cours...', type='info')
-                                success, error = await account.delete_scheduled_messages(cid, None)
-                                if success:
-                                    notify('Messages supprimés !', type='positive')
-                                    self.current_messages = [
-                                        msg for msg in self.current_messages
-                                        if msg['chat_id'] != cid
-                                    ]
-                                    self.display_messages()
-                                else:
-                                    notify(f'Erreur: {error}', type='negative')
-                            except Exception as e:
-                                logger.error(f"Erreur suppression: {e}")
-                                notify(f'Erreur: {e}', type='negative')
-                        
                         confirm = ConfirmDialog(
                             title=f'Supprimer tous les messages de "{title}" ?',
                             message='Cette action est irréversible.',
@@ -242,7 +270,7 @@ class ScheduledMessagesPage:
                     return delete_all
                 
                 with ui.button(
-                    on_click=make_delete_all(chat_id, chat_data['title'])
+                    on_click=make_delete_all(chat_id, chat_data['title'], account, chat_data['messages'])
                 ).props('flat dense').style('color: var(--danger);'):
                     with ui.row().classes('items-center gap-1'):
                         ui.html(svg('close', 16, 'var(--danger)'))
@@ -278,26 +306,26 @@ class ScheduledMessagesPage:
                         )
                 
                 # Bouton supprimer
-                def make_delete(cid: int, mid: int):
+                def make_delete(cid: int, mid: int, acc):
                     async def delete() -> None:
                         try:
-                            notify('Suppression...', type='info')
-                            success, error = await account.delete_scheduled_messages(cid, [mid])
+                            ui.notify('Suppression...', type='info')
+                            success, error = await acc.delete_scheduled_messages(cid, [mid])
                             if success:
-                                notify('Message supprimé', type='positive')
+                                ui.notify('Message supprimé', type='positive')
                                 self.current_messages = [
                                     m for m in self.current_messages
                                     if not (m['chat_id'] == cid and m['message_id'] == mid)
                                 ]
                                 self.display_messages()
                             else:
-                                notify(f'Erreur: {error}', type='negative')
+                                ui.notify(f'Erreur: {error}', type='negative')
                         except Exception as e:
                             logger.error(f"Erreur suppression message: {e}")
-                            notify(f'Erreur: {e}', type='negative')
+                            ui.notify(f'Erreur: {e}', type='negative')
                     return delete
                 
-                with ui.button(on_click=make_delete(chat_id, msg['message_id'])).props(
+                with ui.button(on_click=make_delete(chat_id, msg['message_id'], account)).props(
                     'flat dense round'
                 ).style('color: var(--danger);'):
                     ui.html(svg('close', 18, '#ef4444'))
@@ -353,6 +381,9 @@ class ScheduledMessagesPage:
         if not connected:
             notify('Aucun compte connecté', type='negative')
             return
+        
+        # Réinitialiser le filtre de groupe lors d'un nouveau scan
+        self.selected_chat_id = None
         
         total_accounts = len(connected)
         self.messages_container.clear()
@@ -453,22 +484,33 @@ class ScheduledMessagesPage:
                 # Boutons d'action
                 with ui.row().classes('w-full gap-3 mb-4'):
                     async def refresh() -> None:
-                        notify(f'{ICON_REFRESH} Rechargement de tous les comptes...', type='info')
+                        ui.notify('Rechargement de tous les comptes...', type='info')
                         await self.scan_all_accounts()
                     
-                    ui.button(f'{ICON_REFRESH} Rafraîchir tout', on_click=refresh).props('outline').style(
-                        'color: var(--accent);'
-                    )
+                    with ui.button(on_click=refresh).props('outline').style('color: var(--accent);'):
+                        with ui.row().classes('items-center gap-2'):
+                            ui.html(svg('sync', 18, 'var(--accent)'))
+                            ui.label('Rafraîchir tout')
                     
-                    ui.button(
-                        'Tout supprimer (TOUS LES COMPTES)',
-                        icon='delete_forever',
-                        on_click=self._delete_all_from_all_accounts
-                    ).props('color=red')
+                    with ui.button(on_click=self._delete_all_from_all_accounts).props('color=red'):
+                        with ui.row().classes('items-center gap-2'):
+                            ui.html(svg('delete_forever', 18, 'white'))
+                            ui.label('Tout supprimer (TOUS LES COMPTES)')
+                
+                # Menu de filtrage par groupe
+                self._render_groups_filter_menu()
+                
+                # Filtrer les messages selon le groupe sélectionné
+                filtered_messages = self.current_messages
+                if self.selected_chat_id is not None:
+                    filtered_messages = [
+                        msg for msg in self.current_messages 
+                        if msg['chat_id'] == self.selected_chat_id
+                    ]
                 
                 # Grouper par compte
                 accounts_dict: Dict[str, Dict] = {}
-                for msg in self.current_messages:
+                for msg in filtered_messages:
                     account_id = msg['account_session_id']
                     account_name = msg['account_name']
                     
@@ -483,9 +525,19 @@ class ScheduledMessagesPage:
                 with ui.card().classes('w-full p-5 mb-4').style(
                     'background: #ecfdf5; border-left: 3px solid var(--success);'
                 ):
-                    ui.label(
-                        f'{len(self.current_messages)} message(s) programmé(s) sur {len(accounts_dict)} compte(s)'
-                    ).classes('text-lg font-bold').style('color: #065f46;')
+                    if self.selected_chat_id is None:
+                        ui.label(
+                            f'{len(self.current_messages)} message(s) programmé(s) sur {len(accounts_dict)} compte(s)'
+                        ).classes('text-lg font-bold').style('color: #065f46;')
+                    else:
+                        # Afficher le nom du groupe filtré
+                        filtered_chat_title = next(
+                            (msg['chat_title'] for msg in filtered_messages if msg['chat_id'] == self.selected_chat_id),
+                            "Groupe inconnu"
+                        )
+                        ui.label(
+                            f'{len(filtered_messages)} message(s) dans "{filtered_chat_title}"'
+                        ).classes('text-lg font-bold').style('color: #065f46;')
                 
                 # Afficher par compte
                 for account_id, account_data in accounts_dict.items():
@@ -652,4 +704,95 @@ class ScheduledMessagesPage:
             is_danger=True
         )
         confirm.show()
+    
+    def _render_groups_filter_menu(self) -> None:
+        """Rend le menu de filtrage par groupe."""
+        # Extraire tous les groupes uniques avec leur nombre de messages
+        groups_dict: Dict[int, Dict] = {}
+        for msg in self.current_messages:
+            chat_id = msg['chat_id']
+            if chat_id not in groups_dict:
+                groups_dict[chat_id] = {
+                    'title': msg['chat_title'],
+                    'count': 0
+                }
+            groups_dict[chat_id]['count'] += 1
+        
+        # Afficher seulement s'il y a au moins 1 groupe
+        if len(groups_dict) == 0:
+            return
+        
+        # Trier par nombre de messages (décroissant)
+        sorted_groups = sorted(
+            groups_dict.items(), 
+            key=lambda x: x[1]['count'], 
+            reverse=True
+        )
+        
+        # Rendre le menu
+        with ui.card().classes('w-full p-4 mb-4').style(
+            'background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); '
+            'border: 2px solid #0ea5e9; border-radius: 12px;'
+        ):
+            with ui.row().classes('items-center gap-2 mb-3'):
+                ui.html(svg('filter_list', 20, '#0369a1'))
+                ui.label('Filtrer par groupe :').classes('text-lg font-bold').style(
+                    'color: #0369a1;'
+                )
+                ui.label(f'{len(groups_dict)} groupe(s)').classes('text-xs px-2 py-1 rounded').style(
+                    'background: rgba(14, 165, 233, 0.2); color: #0369a1;'
+                )
+            
+            # Menu scrollable horizontal
+            with ui.row().classes('gap-2 flex-wrap'):
+                # Bouton "Tous"
+                def select_all():
+                    self.selected_chat_id = None
+                    # Vérifier si on est en mode "compte unique" ou "scan global"
+                    if self.selected_account:
+                        self.display_messages()
+                    else:
+                        self.display_all_accounts_messages()
+                
+                is_all_selected = self.selected_chat_id is None
+                button_style = (
+                    'background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); '
+                    'color: white; font-weight: bold; border: 2px solid #1d4ed8;'
+                    if is_all_selected else
+                    'background: #f3f4f6; color: #6b7280; border: 2px solid #e5e7eb;'
+                )
+                
+                with ui.button(on_click=select_all).props('dense').style(button_style):
+                    with ui.row().classes('items-center gap-2'):
+                        ui.label('📋 Tous les groupes').classes('text-sm')
+                        ui.label(f'({len(self.current_messages)})').classes('text-xs')
+                
+                # Bouton pour chaque groupe
+                for chat_id, group_data in sorted_groups:
+                    def make_select(cid: int):
+                        def select():
+                            self.selected_chat_id = cid
+                            # Vérifier si on est en mode "compte unique" ou "scan global"
+                            if self.selected_account:
+                                self.display_messages()
+                            else:
+                                self.display_all_accounts_messages()
+                        return select
+                    
+                    is_selected = self.selected_chat_id == chat_id
+                    button_style = (
+                        'background: linear-gradient(135deg, #10b981 0%, #059669 100%); '
+                        'color: white; font-weight: bold; border: 2px solid #047857;'
+                        if is_selected else
+                        'background: white; color: #374151; border: 2px solid #d1d5db;'
+                    )
+                    
+                    with ui.button(on_click=make_select(chat_id)).props('dense').style(button_style):
+                        with ui.row().classes('items-center gap-2'):
+                            # Tronquer le titre si trop long
+                            title = group_data['title']
+                            if len(title) > 25:
+                                title = title[:22] + '...'
+                            ui.label(title).classes('text-sm')
+                            ui.label(f'({group_data["count"]})').classes('text-xs')
 
