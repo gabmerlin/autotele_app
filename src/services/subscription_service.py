@@ -51,10 +51,10 @@ class SubscriptionService:
                 return
             
             self.supabase = create_client(supabase_url=url, supabase_key=anon_key)
-            logger.info("✅ Client Supabase initialisé (service abonnement)")
+            logger.info("Client Supabase initialise (service abonnement)")
         except ValueError as e:
             # Erreur de configuration (secrets manquants dans .env)
-            logger.error(f"❌ Configuration Supabase invalide: {e}")
+            logger.error(f"Configuration Supabase invalide: {e}")
             self.supabase = None
         except Exception as e:
             logger.error(f"Erreur lors de l'initialisation de Supabase: {e}")

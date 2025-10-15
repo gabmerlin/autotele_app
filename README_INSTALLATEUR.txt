@@ -1,162 +1,191 @@
 ================================================================
-  AUTOTELE v1.3.0 - GUIDE D'INSTALLATION
+AUTOTELE v1.4.0 - GUIDE D'INSTALLATION
 ================================================================
 
-Merci d'avoir telecharge AutoTele !
+Merci d'avoir installé AutoTele, l'application de gestion Telegram 
+multi-comptes la plus sécurisée !
 
 ================================================================
-  PREMIERE INSTALLATION
+PREMIÈRE UTILISATION - CONFIGURATION SIMPLIFIÉE
 ================================================================
 
-1. INSTALLER L'APPLICATION
-   - Executez AutoTele-Setup.exe
-   - Suivez les instructions a l'ecran
-   - L'application sera installee dans : C:\Program Files\AutoTele
+✅ BONNE NOUVELLE : AutoTele est PRÉ-CONFIGURÉ !
 
-2. CONFIGURER VOS SECRETS (OBLIGATOIRE)
-   
-   a) Creez le fichier .env
-      - Allez dans le dossier d'installation
-      - Copiez "credentials.example" et renommez-le en ".env"
-   
-   b) Obtenez vos credentials Telegram
-      - Allez sur : https://my.telegram.org
-      - Connectez-vous avec votre numero
-      - Creez une nouvelle application
-      - Notez votre API_ID et API_HASH
-   
-   c) Editez le fichier .env
-      Ouvrez .env avec Notepad et remplissez :
-      
-      AUTOTELE_API_ID=123456789
-      AUTOTELE_API_HASH=abcdef1234567890
-      AUTOTELE_ENCRYPTION_KEY=votre_cle_de_32_caracteres
-   
-   d) Generez la cle de chiffrement
-      Option 1 (Recommande) - PowerShell :
-        python -c "import secrets; print(secrets.token_urlsafe(32))"
-      
-      Option 2 - Generateur en ligne :
-        Utilisez un generateur de mots de passe securise
-        Longueur minimale : 32 caracteres
-
-3. LANCER L'APPLICATION
-   - Double-cliquez sur l'icone AutoTele
-   - Ou : Demarrer > AutoTele
+Vous pouvez lancer AutoTele immédiatement :
+• Double-cliquez sur l'icône AutoTele sur le bureau
+• Ou via Menu Démarrer > AutoTele
 
 ================================================================
-  STRUCTURE DES FICHIERS
+PREMIÈRE CONNEXION
 ================================================================
 
-AutoTele/
-│
-├── AutoTele.exe          # Application principale
-├── .env                  # Vos secrets (A CREER)
-├── credentials.example   # Modele pour .env
-│
-└── (Crees automatiquement au 1er lancement)
-    ├── sessions/         # Sessions Telegram chiffrees
-    ├── logs/             # Journaux d'activite
-    ├── temp/             # Fichiers temporaires
-    └── config/           # Configuration
+Au premier lancement, l'application vous demandera de :
+
+1. CRÉER UN COMPTE AUTOTELE
+   --------------------------------
+   • Cliquez sur "S'inscrire"
+   • Entrez votre email et mot de passe
+   • Confirmez votre mot de passe
+   • Votre compte est créé !
+
+2. SOUSCRIRE UN ABONNEMENT
+   --------------------------------
+   • AutoTele nécessite un abonnement actif
+   • Prix : 34.99 USD/mois
+   • Paiement sécurisé via BTCPay (Bitcoin/Lightning)
+   • Une fois le paiement confirmé, vous aurez accès complet
+
+3. AJOUTER VOS COMPTES TELEGRAM
+   --------------------------------
+   • Cliquez sur l'onglet "Comptes"
+   • Cliquez sur "Ajouter un compte"
+   • Entrez votre numéro de téléphone Telegram
+   • Entrez le code de vérification reçu sur Telegram
+   • Votre compte est connecté !
+
 
 ================================================================
-  SECURITE
+FONCTIONNALITÉS PRINCIPALES
 ================================================================
 
-VOTRE APPLICATION EST 100% SECURISEE :
+✅ Gestion multi-comptes Telegram
+   • Connectez plusieurs comptes Telegram
+   • Basculez facilement entre les comptes
+   • Gérez vos messages de tous les comptes en un seul endroit
 
-✓ Sessions chiffrees avec AES-256
-✓ Protection contre les injections SQL
-✓ Validation complete des entrees
-✓ Logs anonymises (RGPD)
-✓ Score de securite : 10/10
+✅ Messagerie en temps réel
+   • Interface moderne et intuitive
+   • Envoi/réception instantané
+   • Photos de profil et groupes
+   • Recherche et filtres avancés
 
-IMPORTANT :
-- Ne partagez JAMAIS votre fichier .env
-- Sauvegardez votre cle de chiffrement en lieu sur
-- Si vous perdez la cle, vous devrez reconnecter vos comptes
+✅ Envoi de messages planifiés
+   • Envoyez des messages à plusieurs contacts/groupes
+   • Planifiez vos envois
+   • Suivez l'historique d'envoi
 
-================================================================
-  PREMIERE UTILISATION
-================================================================
 
-1. Lancez AutoTele.exe
+✅ Interface moderne et intuitive
+   • Design moderne avec Material Design
+   • Navigation simple
+   • Responsive
 
-2. Ajoutez votre premier compte Telegram :
-   - Cliquez sur "Ajouter un compte"
-   - Entrez votre numero de telephone (format international : +33...)
-   - Entrez le code recu par Telegram
-   - Votre compte est maintenant connecte !
-
-3. Profitez des fonctionnalites :
-   - Gestion multi-comptes
-   - Messagerie en temps reel
-   - Planification de messages
-   - Envoi massif securise
 
 ================================================================
-  DEPANNAGE
+DÉPANNAGE
 ================================================================
 
-PROBLEME : "Credentials API non configures"
-SOLUTION : Vous n'avez pas cree le fichier .env
-          Suivez l'etape 2 ci-dessus
+PROBLÈME : AutoTele ne démarre pas
+----------------------------------
 
-PROBLEME : "Cle de chiffrement non definie"
-SOLUTION : Ajoutez AUTOTELE_ENCRYPTION_KEY dans votre .env
-          Generez-la avec la commande fournie
+1. Consultez le fichier logs\autotele_YYYYMMDD.log pour plus d'infos
+2. Contactez le support : Telegram : @cob_cob_cob
 
-PROBLEME : L'application ne demarre pas
-SOLUTION : 
-   1. Verifiez que .env existe et contient toutes les variables
-   2. Consultez les logs dans : logs/autotele_YYYYMMDD.log
-   3. Verifiez que Windows Defender ne bloque pas l'exe
 
-PROBLEME : Antivirus bloque l'application
-SOLUTION : C'est un faux positif (applications Python compilees)
-          Ajoutez une exception dans votre antivirus
+PROBLÈME : "Aucun abonnement actif"
+------------------------------------
 
-================================================================
-  MISE A JOUR
-================================================================
+1. Vérifiez que votre paiement BTCPay a été confirmé
+2. Attendez 1-2 confirmations blockchain (Lightning = instantané)
+3. Redémarrez l'application
+4. Si le problème persiste, contactez le support
 
-Pour mettre a jour vers une nouvelle version :
 
-1. Sauvegardez votre fichier .env
-2. Sauvegardez vos sessions (dossier sessions/)
-3. Installez la nouvelle version
-4. Replacez votre .env
-5. Relancez l'application
+PROBLÈME : "Erreur de connexion Telegram"
+------------------------------------------
+
+1. Vérifiez votre connexion Internet
+2. Vérifiez que votre numéro de téléphone est correct
+3. Vérifiez que vous avez bien reçu le code de vérification
+4. Réessayez dans quelques minutes
+
 
 ================================================================
-  SUPPORT
+MISE À JOUR
 ================================================================
 
-Documentation complete :
-- SECURITE_GUIDE.md (dans le dossier d'installation)
-- tests/security_tests.py (tests de securite)
+Lors d'une mise à jour d'AutoTele :
 
-Tests de securite :
-    python tests\security_tests.py
+✅ PRÉSERVÉ AUTOMATIQUEMENT :
+   • Vos sessions Telegram (dossier sessions/)
+   • Vos logs (dossier logs/)
+   • Votre historique d'envoi
+   • Votre abonnement
 
-Verification de configuration :
-    1. Lancez l'application
-    2. Verifiez les logs
-    3. Devrait afficher :
-       [INFO] Chiffrement des sessions active (AES-256 + PBKDF2)
+❌ REMPLACÉ :
+   • L'exécutable AutoTele.exe uniquement
 
-================================================================
-  LICENCE
-================================================================
+⚠️ IMPORTANT : Ne désinstallez pas l'ancienne version avant 
+d'installer la nouvelle, sinon vos sessions seront perdues.
 
-AutoTele v1.3.0
-Copyright (c) 2025
-
-Application de gestion Telegram multi-comptes
-Score de securite : 10/10 (Certifie)
 
 ================================================================
+DÉSINSTALLATION
+================================================================
 
-Bon usage de AutoTele !
+Si vous désinstallez AutoTele :
 
+• L'application sera supprimée
+• VOS DONNÉES SERONT CONSERVÉES (sessions, logs)
+• Pour les supprimer, supprimez manuellement le dossier 
+  C:\Program Files\AutoTele\ après désinstallation
+
+⚠️ ATTENTION : Si vous désinstallez, vous devrez reconnecter
+tous vos comptes Telegram lors de la réinstallation.
+
+
+================================================================
+SUPPORT ET AIDE
+================================================================
+
+Documentation : https://autotele.app/docs
+Support : support@autotele.app
+GitHub : https://github.com/gabmerlin/autotele_app
+Issues : https://github.com/gabmerlin/autotele_app/issues
+
+
+================================================================
+SÉCURITÉ ET CONFIDENTIALITÉ
+================================================================
+
+🔒 AutoTele respecte votre vie privée :
+
+• Aucune donnée n'est envoyée à des serveurs tiers
+• Vos sessions Telegram sont chiffrées localement
+• Configuration sensible chiffrée et embarquée dans l'exe
+• Aucun tracking, aucune télémétrie
+• Code source disponible sur GitHub
+• Tests de sécurité : 30/30 passés (score 10/10)
+
+
+================================================================
+LICENCE
+================================================================
+
+AutoTele est distribué sous licence MIT.
+Consultez LICENSE.txt pour plus de détails.
+
+Copyright (C) 2025 AutoTele Team
+Tous droits réservés.
+
+
+================================================================
+REMERCIEMENTS
+================================================================
+
+Merci d'utiliser AutoTele !
+
+Si vous appréciez l'application, n'hésitez pas à :
+• Laisser une étoile sur GitHub ⭐
+• Recommander AutoTele à vos amis
+• Signaler les bugs sur GitHub Issues
+• Contribuer au projet (pull requests bienvenues)
+
+
+================================================================
+
+Version : 1.4.0
+Date : 14 octobre 2025
+Build : Production
+
+================================================================

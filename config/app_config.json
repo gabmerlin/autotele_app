@@ -13,10 +13,9 @@
     "max_groups_warning": 50
   },
   "btcpay": {
-    "_note": "Les secrets BTCPay (server_url, store_id, api_key, webhook_secret) sont chargés depuis .env",
-    "subscription_price": 24.99,
-    "currency": "USD",
-    "trial_days": 0,
+    "_note": "TOUS les paramètres BTCPay (server_url, store_id, api_key, webhook_secret, price, currency) sont chargés depuis .env CHIFFRÉ",
+    "_security": "NE JAMAIS mettre subscription_price ou currency ici - ils doivent rester dans .env chiffré",
+    "trial_days": 1,
     "check_interval_hours": 24
   },
   "security": {

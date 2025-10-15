@@ -34,15 +34,28 @@ class AuthDialog:
         self.container = None
     
     def show(self):
-        """Affiche le dialogue d'authentification"""
-        self.dialog = ui.dialog().props('persistent')
-        with self.dialog, ui.card().classes('w-full max-w-md p-6'):
-            # Conteneur principal qui sera rafraîchi lors du changement de mode
-            self.container = ui.column().classes('w-full gap-4')
-            with self.container:
-                self._render_content()
-        
-        self.dialog.open()
+        """Affiche le dialogue d'authentification - VERSION SANS DIALOG"""
+        # BYPASS COMPLET du système ui.dialog() qui bloque les interactions
+        # Créer directement dans le conteneur principal
+        with ui.column().classes('w-full h-screen items-center justify-center').style(
+            'position: fixed !important; '
+            'top: 0 !important; '
+            'left: 0 !important; '
+            'z-index: 99999 !important; '
+            'background: rgba(100, 100, 100, 0.8) !important; '
+            'pointer-events: auto !important;'
+        ):
+            with ui.card().classes('w-full p-8').style(
+                'pointer-events: auto !important; '
+                'z-index: 999999 !important; '
+                'position: relative !important; '
+                'max-width: 600px !important; '
+                'min-width: 550px !important;'
+            ):
+                # Conteneur principal qui sera rafraîchi lors du changement de mode
+                self.container = ui.column().classes('w-full gap-4')
+                with self.container:
+                    self._render_content()
     
     def _render_content(self):
         """Affiche le contenu du dialogue selon le mode"""
@@ -70,13 +83,12 @@ class AuthDialog:
                 ui.label('Créer un compte').classes('text-xl font-semibold')
                 ui.label('Rejoignez AutoTele dès aujourd\'hui').classes('text-sm text-gray-600')
             
-            ui.space()
-            
             # Formulaire
-            self._render_form()
+            with ui.column().classes('w-full gap-4').style('min-width: 380px; padding: 10px;'):
+                self._render_form()
             
             # Message d'erreur
-            self.error_label = ui.label('').classes('text-red-500 text-sm min-h-6')
+            self.error_label = ui.label('').classes('text-red-500 text-sm min-h-6').style('min-height:18px;')
             
             # Boutons d'action
             with ui.row().classes('w-full gap-2'):
@@ -117,23 +129,91 @@ class AuthDialog:
                 .classes('w-full') \
                 .props('outlined dense')
         
-        # Email
-        self.email_input = ui.input('Email') \
-            .classes('w-full') \
-            .props('outlined dense type=email') \
-            .on('keydown.enter', lambda: self._handle_submit())
+        # EMAIL - Input HTML natif (compatible PyInstaller)
+        ui.label('Email').classes('text-sm font-medium text-gray-700')
+        email_html = '''
+        <input 
+            type="email" 
+            id="email_input_native" 
+            placeholder="votre@email.com"
+            autofocus
+            style="
+                width: 520px;
+                max-width: 100%;
+                height: 56px;
+                background: #ffffff;
+                border: 2px solid #d1d5db;
+                border-radius: 8px;
+                font-size: 16px;
+                padding: 14px 16px;
+                pointer-events: auto;
+                cursor: text;
+                box-sizing: border-box;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                transition: border-color 0.2s;
+            "
+            onfocus="this.style.borderColor='#3b82f6'; this.style.outline='2px solid #dbeafe';"
+            onblur="this.style.borderColor='#d1d5db'; this.style.outline='none';"
+        />
+        '''
+        self.email_input = ui.html(email_html)
         
-        # Mot de passe
-        self.password_input = ui.input('Mot de passe', password=True) \
-            .classes('w-full') \
-            .props('outlined dense') \
-            .on('keydown.enter', lambda: self._handle_submit())
+        # MOT DE PASSE - Input HTML natif (compatible PyInstaller)
+        ui.label('Mot de passe').classes('text-sm font-medium text-gray-700 mt-3')
+        password_html = '''
+        <input 
+            type="password" 
+            id="password_input_native" 
+            placeholder="••••••••"
+            style="
+                width: 520px;
+                max-width: 100%;
+                height: 56px;
+                background: #ffffff;
+                border: 2px solid #d1d5db;
+                border-radius: 8px;
+                font-size: 16px;
+                padding: 14px 16px;
+                pointer-events: auto;
+                cursor: text;
+                box-sizing: border-box;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                transition: border-color 0.2s;
+            "
+            onfocus="this.style.borderColor='#3b82f6'; this.style.outline='2px solid #dbeafe';"
+            onblur="this.style.borderColor='#d1d5db'; this.style.outline='none';"
+        />
+        '''
+        self.password_input = ui.html(password_html)
         
-        # Confirmation mot de passe (signup uniquement)
+        # Confirmation mot de passe (signup uniquement) - HTML natif aussi
         if self.mode == 'signup':
-            self.password_confirm_input = ui.input('Confirmer le mot de passe', password=True) \
-                .classes('w-full') \
-                .props('outlined dense') \
+            ui.label('Confirmer le mot de passe').classes('text-sm font-medium text-gray-700 mt-3')
+            password_confirm_html = '''
+            <input 
+                type="password" 
+                id="password_confirm_input_native" 
+                placeholder="••••••••"
+                style="
+                    width: 520px;
+                    max-width: 100%;
+                    height: 56px;
+                    background: #ffffff;
+                    border: 2px solid #d1d5db;
+                    border-radius: 8px;
+                    font-size: 16px;
+                    padding: 14px 16px;
+                    pointer-events: auto;
+                    cursor: text;
+                    box-sizing: border-box;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    transition: border-color 0.2s;
+                "
+                onfocus="this.style.borderColor='#3b82f6'; this.style.outline='2px solid #dbeafe';"
+                onblur="this.style.borderColor='#d1d5db'; this.style.outline='none';"
+            />
+            '''
+            self.password_confirm_input = ui.html(password_confirm_html) \
                 .on('keydown.enter', lambda: self._handle_submit())
             
             # Indication sur le mot de passe
@@ -149,10 +229,17 @@ class AuthDialog:
         pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
         return re.match(pattern, email) is not None
     
-    def _validate_form(self) -> tuple[bool, str]:
+    async def _validate_form(self) -> tuple[bool, str]:
         """Valide le formulaire et retourne (valide, message_erreur)"""
-        email = self.email_input.value.strip()
-        password = self.password_input.value
+        # Récupération via JavaScript des valeurs des inputs HTML natifs
+        try:
+            email = await ui.run_javascript('document.getElementById("email_input_native").value', timeout=1.0) or ""
+            password = await ui.run_javascript('document.getElementById("password_input_native").value', timeout=1.0) or ""
+            email = str(email).strip()
+            password = str(password)
+        except Exception as e:
+            logger.error(f"Erreur lecture champs: {e}")
+            return False, "Erreur de lecture des champs"
         
         if not email:
             return False, "L'email est requis"
@@ -168,7 +255,16 @@ class AuthDialog:
         
         # Validations supplémentaires pour signup
         if self.mode == 'signup':
-            password_confirm = self.password_confirm_input.value
+            try:
+                password_confirm = await ui.run_javascript('document.getElementById("password_confirm_input_native").value', timeout=1.0) or ""
+                password_confirm = str(password_confirm)
+            except Exception as e:
+                logger.error(f"Erreur lecture confirmation: {e}")
+                return False, "Erreur de lecture de la confirmation"
+            
+            if not password_confirm:
+                return False, "La confirmation du mot de passe est requise"
+            
             if password != password_confirm:
                 return False, "Les mots de passe ne correspondent pas"
         
@@ -180,7 +276,7 @@ class AuthDialog:
         self.error_label.text = ''
         
         # Valider le formulaire
-        valid, error = self._validate_form()
+        valid, error = await self._validate_form()
         if not valid:
             self.error_label.text = error
             return
@@ -189,16 +285,16 @@ class AuthDialog:
         self.submit_button.props('loading')
         
         try:
-            # Tenter la connexion
-            email = self.email_input.value.strip()
-            password = self.password_input.value
+            # Récupérer les valeurs via JavaScript
+            email = await ui.run_javascript('document.getElementById("email_input_native").value', timeout=1.0) or ""
+            password = await ui.run_javascript('document.getElementById("password_input_native").value', timeout=1.0) or ""
+            email = str(email).strip()
+            password = str(password)
             
             success, message = await self.auth_service.sign_in(email, password)
             
             if success:
-                self.dialog.close()
-                
-                # Appeler le callback de succès
+                # Appeler le callback de succès (qui gérera la fermeture du dialogue)
                 if self.on_success:
                     await self.on_success()
             else:
@@ -217,7 +313,7 @@ class AuthDialog:
         self.error_label.text = ''
         
         # Valider le formulaire
-        valid, error = self._validate_form()
+        valid, error = await self._validate_form()
         if not valid:
             self.error_label.text = error
             return
@@ -226,9 +322,11 @@ class AuthDialog:
         self.submit_button.props('loading')
         
         try:
-            # Créer le compte
-            email = self.email_input.value.strip()
-            password = self.password_input.value
+            # Récupérer les valeurs via JavaScript
+            email = await ui.run_javascript('document.getElementById("email_input_native").value', timeout=1.0) or ""
+            password = await ui.run_javascript('document.getElementById("password_input_native").value', timeout=1.0) or ""
+            email = str(email).strip()
+            password = str(password)
             name = self.name_input.value.strip() if self.name_input else ''
             
             metadata = {}
@@ -242,9 +340,7 @@ class AuthDialog:
                 success_login, _ = await self.auth_service.sign_in(email, password)
                 
                 if success_login:
-                    self.dialog.close()
-                    
-                    # Appeler le callback de succès
+                    # Appeler le callback de succès (qui gérera la fermeture)
                     if self.on_success:
                         await self.on_success()
                 else:

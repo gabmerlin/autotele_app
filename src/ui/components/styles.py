@@ -166,6 +166,50 @@ GLOBAL_CSS: Final[str] = '''
         background: var(--primary);
     }
     
+    /* FORCER L'AFFICHAGE ET L'INTERACTION DES CHAMPS - CRITIQUE */
+    .q-field, .q-input, input {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        position: relative !important;
+        pointer-events: auto !important;
+        z-index: 9999 !important;
+    }
+    .q-field__control, .q-input .q-field__control {
+        min-height: 56px !important;
+        display: flex !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+    }
+    .q-field__native, .q-input input {
+        min-height: 44px !important;
+        line-height: 1.5 !important;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        cursor: text !important;
+    }
+    .q-field--outlined .q-field__control {
+        background: #ffffff !important;
+        border: 2px solid var(--border) !important;
+    }
+    .q-field__label {
+        color: var(--text-secondary) !important;
+        display: block !important;
+        visibility: visible !important;
+        pointer-events: none !important;
+    }
+    .q-field__control::before,
+    .q-field__control::after {
+        display: block !important;
+        pointer-events: none !important;
+    }
+    /* Suppression des overlays bloquants */
+    .q-field__append, .q-field__prepend {
+        pointer-events: none !important;
+    }
+
     /* Zone d'upload de fichier */
     .file-upload-area:hover {
         background: rgba(30, 58, 138, 0.9) !important;

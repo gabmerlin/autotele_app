@@ -48,9 +48,27 @@ class AccountDialogs:
 
             with ui.column().classes('w-full gap-4'):
                 ui.label('Numéro de téléphone').classes('font-medium')
-                phone_input = ui.input(
-                    placeholder='+33612345678'
-                ).classes('w-full')
+                # Input HTML natif pour compatibilité PyInstaller
+                phone_html = '''
+                <input 
+                    type="tel"
+                    id="phone_input_native"
+                    placeholder="+33612345678"
+                    style="
+                        width: 520px;
+                        max-width: 100%;
+                        height: 56px;
+                        background: #ffffff;
+                        border: 2px solid #d1d5db;
+                        border-radius: 8px;
+                        font-size: 16px;
+                        padding: 14px 16px;
+                        box-sizing: border-box;
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    "
+                />
+                '''
+                phone_input = ui.html(phone_html).classes('w-full')
 
                 with ui.card().classes('bg-blue-50 p-3'):
                     with ui.row().classes('items-center gap-2'):
@@ -62,7 +80,13 @@ class AccountDialogs:
 
                 async def submit() -> None:
                     """Soumet le formulaire d'ajout de compte."""
-                    phone = phone_input.value.strip()
+                    # Récupérer le numéro via JavaScript
+                    try:
+                        phone = await ui.run_javascript('document.getElementById("phone_input_native").value', timeout=1.0) or ""
+                        phone = str(phone).strip()
+                    except Exception:
+                        notify('Erreur de lecture du numéro', type='negative')
+                        return
 
                     is_valid, error_msg = validate_phone_number(phone)
                     if not is_valid:
@@ -129,13 +153,50 @@ class AccountDialogs:
                 ui.label(f'Téléphone: {phone}').classes('text-gray-600')
 
                 ui.label('Code de vérification').classes('font-medium')
-                code_input = ui.input(placeholder='12345').classes('w-full')
+                # Input HTML natif
+                code_html = '''
+                <input 
+                    type="text"
+                    id="code_input_native"
+                    placeholder="12345"
+                    style="
+                        width: 520px;
+                        max-width: 100%;
+                        height: 56px;
+                        background: #ffffff;
+                        border: 2px solid #d1d5db;
+                        border-radius: 8px;
+                        font-size: 16px;
+                        padding: 14px 16px;
+                        box-sizing: border-box;
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    "
+                />
+                '''
+                code_input = ui.html(code_html).classes('w-full')
 
                 ui.label('Mot de passe 2FA (si activé)').classes('font-medium')
-                password_input = ui.input(
-                    placeholder='Laissez vide si pas de 2FA',
-                    password=True
-                ).classes('w-full')
+                # Input HTML natif pour password
+                password_html = '''
+                <input 
+                    type="password"
+                    id="password_input_native"
+                    placeholder="Laissez vide si pas de 2FA"
+                    style="
+                        width: 520px;
+                        max-width: 100%;
+                        height: 56px;
+                        background: #ffffff;
+                        border: 2px solid #d1d5db;
+                        border-radius: 8px;
+                        font-size: 16px;
+                        padding: 14px 16px;
+                        box-sizing: border-box;
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    "
+                />
+                '''
+                password_input = ui.html(password_html).classes('w-full')
 
                 with ui.card().classes('p-3').style(
                     'background: #fef3c7; '
@@ -150,11 +211,15 @@ class AccountDialogs:
 
                 async def verify() -> None:
                     """Vérifie le code de vérification."""
-                    code = code_input.value.strip()
-                    password = (
-                        password_input.value.strip()
-                        if password_input.value else None
-                    )
+                    # Récupérer les valeurs via JavaScript
+                    try:
+                        code = await ui.run_javascript('document.getElementById("code_input_native").value', timeout=1.0) or ""
+                        code = str(code).strip()
+                        password_val = await ui.run_javascript('document.getElementById("password_input_native").value', timeout=1.0) or ""
+                        password = str(password_val).strip() if password_val else None
+                    except Exception:
+                        notify('Erreur de lecture des champs', type='negative')
+                        return
 
                     is_valid, error_msg = validate_verification_code(code)
                     if not is_valid:
@@ -280,17 +345,52 @@ class AccountDialogs:
                         ).classes('text-gray-600')
 
                         ui.label('Code de vérification').classes('font-medium')
-                        code_input = ui.input(
-                            placeholder='12345'
-                        ).classes('w-full')
+                        # Input HTML natif
+                        code_html = '''
+                        <input 
+                            type="text"
+                            id="code_input_reconnect_native"
+                            placeholder="12345"
+                            style="
+                                width: 520px;
+                                max-width: 100%;
+                                height: 56px;
+                                background: #ffffff;
+                                border: 2px solid #d1d5db;
+                                border-radius: 8px;
+                                font-size: 16px;
+                                padding: 14px 16px;
+                                box-sizing: border-box;
+                                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                            "
+                        />
+                        '''
+                        code_input = ui.html(code_html).classes('w-full')
 
                         ui.label('Mot de passe 2FA (si activé)').classes(
                             'font-medium'
                         )
-                        password_input = ui.input(
-                            placeholder='Laissez vide si pas de 2FA',
-                            password=True
-                        ).classes('w-full')
+                        # Input HTML natif pour password
+                        password_html = '''
+                        <input 
+                            type="password"
+                            id="password_input_reconnect_native"
+                            placeholder="Laissez vide si pas de 2FA"
+                            style="
+                                width: 520px;
+                                max-width: 100%;
+                                height: 56px;
+                                background: #ffffff;
+                                border: 2px solid #d1d5db;
+                                border-radius: 8px;
+                                font-size: 16px;
+                                padding: 14px 16px;
+                                box-sizing: border-box;
+                                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                            "
+                        />
+                        '''
+                        password_input = ui.html(password_html).classes('w-full')
 
                         with ui.card().classes('p-3').style(
                             'background: #fef3c7; '
@@ -305,11 +405,15 @@ class AccountDialogs:
 
                         async def verify() -> None:
                             """Vérifie le code de vérification."""
-                            code = code_input.value.strip()
-                            password = (
-                                password_input.value.strip()
-                                if password_input.value else None
-                            )
+                            # Récupérer les valeurs via JavaScript
+                            try:
+                                code = await ui.run_javascript('document.getElementById("code_input_reconnect_native").value', timeout=1.0) or ""
+                                code = str(code).strip()
+                                password_val = await ui.run_javascript('document.getElementById("password_input_reconnect_native").value', timeout=1.0) or ""
+                                password = str(password_val).strip() if password_val else None
+                            except Exception:
+                                notify('Erreur de lecture des champs', type='negative')
+                                return
 
                             is_valid, error_msg = validate_verification_code(
                                 code

@@ -5,12 +5,12 @@ from typing import Optional
 from nicegui import ui
 
 from core.telegram.manager import TelegramManager
-from ui.components.auth_dialog import show_auth_dialog
-from ui.components.payment_dialog import show_payment_dialog
-from ui.components.styles import get_global_styles
-from ui.dialogs.account_dialogs import AccountDialogs
-from ui.managers.auth_manager import AuthManager
-from ui.managers.ui_manager import UIManager
+from .components.auth_dialog import show_auth_dialog
+from .components.payment_dialog import show_payment_dialog
+from .components.styles import get_global_styles
+from .dialogs.account_dialogs import AccountDialogs
+from .managers.auth_manager import AuthManager
+from .managers.ui_manager import UIManager
 from utils.logger import get_logger
 
 logger = get_logger()
@@ -32,11 +32,11 @@ class AutoTeleApp:
         self.main_container: Optional[ui.column] = None
 
         # Import des pages (lazy import pour éviter les imports circulaires)
-        from ui.pages.accounts_page import AccountsPage
-        from ui.pages.messaging_page import MessagingPage
-        from ui.pages.new_message_page import NewMessagePage
-        from ui.pages.scheduled_messages_page import ScheduledMessagesPage
-        from ui.pages.sending_tasks_page import SendingTasksPage
+        from .pages.accounts_page import AccountsPage
+        from .pages.messaging_page import MessagingPage
+        from .pages.new_message_page import NewMessagePage
+        from .pages.scheduled_messages_page import ScheduledMessagesPage
+        from .pages.sending_tasks_page import SendingTasksPage
 
         self.accounts_page = AccountsPage(self.telegram_manager, self)
         self.new_message_page = NewMessagePage(self.telegram_manager)
@@ -191,7 +191,7 @@ class AutoTeleApp:
         with self.main_container:
             with ui.dialog().props('persistent').classes('z-50') as dialog:
                 with ui.card().classes('p-8 text-center max-w-md shadow-2xl'):
-                    from ui.components.svg_icons import svg
+                    from .components.svg_icons import svg
                     ui.html(svg('lock', 80, '#3b82f6'))
                     ui.label('Abonnement requis').classes(
                         'text-2xl font-bold mb-2 mt-4'

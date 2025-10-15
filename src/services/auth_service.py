@@ -53,7 +53,7 @@ class AuthService:
             
         except ValueError as e:
             # Erreur de configuration (secrets manquants dans .env)
-            logger.error(f"❌ Configuration Supabase invalide: {e}")
+            logger.error(f"Configuration Supabase invalide: {e}")
             self.supabase = None
         except Exception as e:
             logger.error(f"Erreur lors de l'initialisation de Supabase: {e}")

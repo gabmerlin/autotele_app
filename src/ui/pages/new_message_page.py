@@ -61,6 +61,9 @@ class NewMessagePage:
         self.steps_container: Optional[ui.column] = None
         self.groups_container: Optional[ui.column] = None
         self.counter_label: Optional[ui.label] = None
+        
+        # Cache pour la recherche de groupes
+        self._last_groups_search = ""
     
         self.calendar_widget: Optional[CalendarWidget] = None
     
@@ -253,10 +256,44 @@ class NewMessagePage:
             
             # Barre de recherche
             with ui.row().classes('w-full gap-3 mb-4'):
-                ui.input(
-                    'Rechercher un groupe...',
-                    on_change=self._on_search_change
-                ).classes('flex-1').props('outlined dense')
+                # Input HTML natif
+                search_html = '''
+                <input 
+                    type="text"
+                    id="search_groups_native"
+                    placeholder="Rechercher un groupe..."
+                    style="
+                        width: 100%;
+                        height: 48px;
+                        background: #ffffff;
+                        border: 2px solid #d1d5db;
+                        border-radius: 8px;
+                        font-size: 16px;
+                        padding: 12px 16px;
+                        box-sizing: border-box;
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    "
+                    oninput="window.searchGroups()"
+                />
+                '''
+                ui.html(search_html).classes('flex-1')
+                
+                # CORRECTION : Créer fonction JavaScript avec debounce
+                ui.run_javascript('''
+                    let groupSearchTimeout;
+                    window.searchGroups = function() {
+                        clearTimeout(groupSearchTimeout);
+                        groupSearchTimeout = setTimeout(() => {
+                            emitEvent('group_search_changed', {});
+                        }, 300);  // Debounce 300ms
+                    };
+                ''')
+                
+                # Handler Python pour l'événement
+                async def on_group_search_event(e):
+                    await self._on_search_change_native()
+                
+                ui.on('group_search_changed', on_group_search_event)
                 
                 with ui.button(on_click=self._select_all_groups).props('outline dense size=sm').style(
                     'color: var(--success); border-color: var(--success);'
@@ -310,12 +347,30 @@ class NewMessagePage:
                 if settings.get('default_message') and not self.state.get('message'):
                     self.state['message'] = settings['default_message']
             
-            # Zone de texte
-            ui.textarea(
-                'Message',
-                value=self.state['message'],
-                on_change=lambda e: self.state.update({'message': e.value})
-            ).classes('w-full').props('outlined rows=6')
+            # Zone de texte - Textarea HTML natif (agrandie)
+            message_value = self.state.get('message', '')
+            message_html = f'''
+            <textarea 
+                id="message_textarea_native"
+                placeholder="Message"
+                rows="12"
+                style="
+                    width: 100%;
+                    min-height: 300px;
+                    background: #ffffff;
+                    border: 2px solid #d1d5db;
+                    border-radius: 8px;
+                    font-size: 16px;
+                    padding: 14px 16px;
+                    resize: vertical;
+                    box-sizing: border-box;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                "
+            >{message_value}</textarea>
+            '''
+            ui.html(message_html).classes('w-full')
+            # Mettre à jour le state périodiquement
+            ui.timer(1.0, lambda: asyncio.create_task(self._update_message_state()), once=False)
             
             # Compteur de caractères
             with ui.row().classes('w-full justify-between items-center mb-4'):
@@ -333,6 +388,13 @@ class NewMessagePage:
                 )
                 
                 async def next_step() -> None:
+                    # Récupérer le message actuel via JavaScript
+                    try:
+                        message = await ui.run_javascript('document.getElementById("message_textarea_native").value', timeout=1.0) or ""
+                        self.state['message'] = str(message)
+                    except Exception:
+                        pass
+                    
                     is_valid, error_msg = validate_message(self.state['message'])
                     if not is_valid:
                         notify(error_msg, type='warning')
@@ -948,6 +1010,35 @@ class NewMessagePage:
         )
         self._update_groups_list()
         self._update_counter()
+    
+    async def _on_search_change_native(self) -> None:
+        """Filtre les groupes (version HTML native)."""
+        try:
+            search_text = await ui.run_javascript('document.getElementById("search_groups_native").value', timeout=0.5) or ""
+            search_text = str(search_text)
+        except Exception:
+            search_text = ""
+        
+        # Ne filtrer que si la recherche a changé
+        if search_text == self._last_groups_search:
+            return
+        
+        self._last_groups_search = search_text
+        
+        self.state['filtered_groups'] = DialogService.filter_dialogs(
+            self.state['all_groups'],
+            search_text
+        )
+        self._update_groups_list()
+        self._update_counter()
+    
+    async def _update_message_state(self) -> None:
+        """Met à jour le message dans le state (version HTML native)."""
+        try:
+            message = await ui.run_javascript('document.getElementById("message_textarea_native").value', timeout=0.5) or ""
+            self.state['message'] = str(message)
+        except Exception:
+            pass
     
     def _select_all_groups(self) -> None:
         """Sélectionne tous les groupes filtrés."""

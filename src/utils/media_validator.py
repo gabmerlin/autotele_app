@@ -437,16 +437,16 @@ class MediaValidator:
                     
                     if real_mime in dangerous_types:
                         os.remove(file_path)
-                        logger.warning(f"🚫 Fichier exécutable bloqué: {real_mime}")
+                        logger.warning(f"Fichier executable bloque: {real_mime}")
                         return False, None, "Type de fichier interdit (exécutable ou script)"
                     
                     # 3. Vérifier cohérence MIME déclaré vs réel
                     if expected_mime and not MediaValidator.is_mime_type_compatible(real_mime, expected_mime):
                         os.remove(file_path)
-                        logger.warning(f"🚫 MIME incohérent: attendu {expected_mime}, obtenu {real_mime}")
+                        logger.warning(f"MIME incoherent: attendu {expected_mime}, obtenu {real_mime}")
                         return False, None, f"Type MIME incohérent (possible fichier déguisé)"
                     
-                    logger.debug(f"✅ Fichier vérifié: {real_mime} ({downloaded_size} bytes)")
+                    logger.debug(f"Fichier verifie: {real_mime} ({downloaded_size} bytes)")
                     return True, file_path, ""
                 else:
                     return False, None, "Échec du téléchargement"

@@ -273,7 +273,7 @@ class MessagingService:
                         # Sauvegarder dans la DB
                         if conversations:
                             count = self.db.save_conversations(session_id, conversations)
-                            logger.info(f"✅ Synchronisé {count} conversations pour {session_id}")
+                            logger.info(f"Synchronise {count} conversations pour {session_id}")
                         else:
                             logger.warning(f"Aucune conversation récupérée pour {session_id}")
                     except Exception as fetch_error:

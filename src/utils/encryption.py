@@ -108,7 +108,7 @@ class SessionEncryption:
         except Exception as e:
             logger.error(f"Erreur lors de la gestion du salt: {e}")
             # Fallback: générer un salt temporaire (moins sécurisé)
-            logger.warning("⚠️ Utilisation d'un salt temporaire (non persistant)")
+            logger.warning("ATTENTION: Utilisation d'un salt temporaire (non persistant)")
             import secrets
             return secrets.token_bytes(32)
     

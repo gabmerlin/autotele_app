@@ -49,7 +49,7 @@ Dependances principales:
 
 Pour plus d'informations:
 - Documentation: README_INSTALLATEUR.txt
-- Support: https://github.com/votre-repo/autotele
+- Support: https://github.com/gabmerlin/autotele_app
 - Tests de securite: tests/security_tests.py
 
 ---

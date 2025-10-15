@@ -1,5 +1,5 @@
 ; ================================================================
-; AUTOTELE - INSTALLATEUR WINDOWS PROFESSIONNEL v1.3.0
+; AUTOTELE - INSTALLATEUR WINDOWS PROFESSIONNEL v1.4.0
 ; ================================================================
 ; Fonctionnalités:
 ; - Logo personnalisé sur installateur et application
@@ -16,17 +16,17 @@
 [Setup]
 ; === INFORMATIONS APPLICATION ===
 AppName=AutoTele
-AppVersion=1.3.0
-AppVerName=AutoTele 1.3.0
+AppVersion=1.4.0
+AppVerName=AutoTele 1.4.0
 AppPublisher=AutoTele Team
-AppPublisherURL=https://autotele.app
-AppSupportURL=https://autotele.app/support
-AppUpdatesURL=https://autotele.app/updates
+AppPublisherURL=https://github.com/gabmerlin/autotele_app
+AppSupportURL=https://github.com/gabmerlin/autotele_app/issues
+AppUpdatesURL=https://github.com/gabmerlin/autotele_app/releases
 AppCopyright=Copyright (C) 2025 AutoTele Team
 
 ; === IDENTIFIANT UNIQUE (Pour détection de mise à jour) ===
 AppId={{B8F3D9E2-1A4C-4F5E-9D3B-7C8A2E6F4D1B}
-VersionInfoVersion=1.3.0.0
+VersionInfoVersion=1.4.0.0
 
 ; === INSTALLATION - L'utilisateur PEUT choisir le répertoire ===
 DefaultDirName={autopf}\AutoTele
@@ -43,23 +43,15 @@ DisableProgramGroupPage=no
 AllowNoIcons=yes
 
 ; === LOGO ET ICÔNES ===
-; Logo sur l'installateur (si icon.ico existe)
-#ifdef FileExists("assets\icon.ico")
-  SetupIconFile=assets\icon.ico
-#endif
-
-; Images de l'assistant d'installation (optionnel)
-#ifdef FileExists("assets\wizard_image.bmp")
-  WizardImageFile=assets\wizard_image.bmp
-#endif
-
-#ifdef FileExists("assets\wizard_small.bmp")
-  WizardSmallImageFile=assets\wizard_small.bmp
-#endif
+; Logo sur l'installateur
+SetupIconFile=assets\icon.ico
+; Images de l'assistant (utiliser vos images existantes)
+WizardImageFile=assets\wizard_image.bmp
+WizardSmallImageFile=assets\wizard_small.bmp
 
 ; === SORTIE ===
 OutputDir=installer_output
-OutputBaseFilename=AutoTele-Setup-v1.3.0
+OutputBaseFilename=AutoTele-Setup-v1.4.0
 
 ; === COMPRESSION (Maximum) ===
 Compression=lzma2/ultra64
@@ -80,8 +72,8 @@ MinVersion=6.1sp1
 WizardStyle=modern
 DisableWelcomePage=no
 ShowLanguageDialog=auto
-; Couleur de thème (bleu AutoTele)
-WizardImageBackColor=clBlue
+; Couleur de fond transparente pour le logo PNG
+WizardImageBackColor=clWhite
 
 ; === DOCUMENTS ===
 LicenseFile=LICENSE.txt
@@ -90,40 +82,43 @@ InfoBeforeFile=README_INSTALLATEUR.txt
 ; === DÉSINSTALLATION ===
 UninstallDisplayIcon={app}\AutoTele.exe
 UninstallFilesDir={app}\uninstall
-UninstallDisplayName=AutoTele 1.3.0
+UninstallDisplayName=AutoTele 1.4.0
 
 [Languages]
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
+
+[CustomMessages]
+FinishedLabel=Installation terminée avec succès !
+FinishedLabelNoIcons=Installation terminée !
+ClickFinish=AutoTele a été installé avec succès sur votre ordinateur.%n%nVous pouvez maintenant lancer l'application et commencer à l'utiliser.%n%nCliquez sur Terminer pour quitter l'assistant d'installation.
 
 [Tasks]
 Name: "desktopicon"; Description: "Creer un raccourci sur le bureau"; GroupDescription: "Raccourcis:"; Flags: unchecked
 Name: "quicklaunchicon"; Description: "Creer un raccourci dans la barre de lancement rapide"; GroupDescription: "Raccourcis:"; Flags: unchecked; OnlyBelowVersion: 6.1; Check: not IsAdminInstallMode
 
 [Files]
-; Executable principal
+; Executable principal (avec icône intégrée par PyInstaller)
 Source: "dist\AutoTele.exe"; DestDir: "{app}"; Flags: ignoreversion
 
-; Configuration et documentation
-Source: "config\credentials.example"; DestDir: "{app}\config"; Flags: ignoreversion
-Source: "config\app_config.json"; DestDir: "{app}\config"; Flags: ignoreversion confirmoverwrite
+; Documentation
+; SÉCURITÉ : .env ET app_config.json sont maintenant chiffrés et embarqués dans l'exe
+; Aucun fichier de configuration n'est copié - tout est en mémoire
 Source: "README_INSTALLATEUR.txt"; DestDir: "{app}"; Flags: ignoreversion isreadme
-Source: "LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion; AfterInstall: CreateEnvTemplate
+Source: "LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Tests de securite (optionnel)
 Source: "tests\security_tests.py"; DestDir: "{app}\tests"; Flags: ignoreversion
-
-; NOTE: .env n'est PAS inclus - sera cree a partir du template
 
 [Dirs]
 ; Creer les repertoires necessaires
 Name: "{app}\sessions"; Permissions: users-full
 Name: "{app}\logs"; Permissions: users-full
 Name: "{app}\temp"; Permissions: users-full
-Name: "{app}\config"; Permissions: users-full
 Name: "{app}\backup"; Permissions: users-full
+; NOTE: Pas de dossier config - tout est chiffré et embarqué dans l'exe
 
 [Icons]
-; Raccourcis
+; Raccourcis (utiliseront automatiquement l'icône de l'exe)
 Name: "{group}\AutoTele"; Filename: "{app}\AutoTele.exe"
 Name: "{group}\Desinstaller AutoTele"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\AutoTele"; Filename: "{app}\AutoTele.exe"; Tasks: desktopicon
@@ -131,8 +126,7 @@ Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\AutoTele"; Filenam
 
 [Run]
 ; Executer apres installation
-Filename: "{app}\README_INSTALLATEUR.txt"; Description: "Lire les instructions d'installation"; Flags: postinstall shellexec skipifsilent nowait
-Filename: "{app}\AutoTele.exe"; Description: "Lancer AutoTele maintenant"; Flags: postinstall nowait skipifsilent unchecked
+Filename: "{app}\AutoTele.exe"; Description: "Lancer AutoTele maintenant"; Flags: postinstall nowait skipifsilent
 
 [UninstallDelete]
 ; Supprimer les fichiers crees par l'application lors de la desinstallation
@@ -180,14 +174,14 @@ begin
     IsUpgradeInstallation := True;
     
     MsgText := 'AutoTele ' + OldVersion + ' est déjà installé.' + #13#10#13#10 +
-               'Voulez-vous le mettre à jour vers la version 1.3.0 ?' + #13#10#13#10 +
+               'Voulez-vous le mettre à jour vers la version 1.4.0 ?' + #13#10#13#10 +
                'IMPORTANT:' + #13#10 +
                '✓ Vos sessions Telegram seront préservées' + #13#10 +
                '✓ Votre configuration (.env) sera préservée' + #13#10 +
                '✓ Vos logs seront préservés' + #13#10#13#10 +
                'Seul l''exécutable sera mis à jour.';
     
-    if MsgBox(MsgText, mbConfirmation, MB_YESNO or MB_ICONQUESTION) = IDNO then
+    if MsgBox(MsgText, mbConfirmation, MB_YESNO) = IDNO then
     begin
       Result := False;
     end;
@@ -197,71 +191,50 @@ end;
 // Après installation
 procedure CurStepChanged(CurStep: TSetupStep);
 var
-  EnvPath: String;
-  EnvExamplePath: String;
   FirstInstall: Boolean;
 begin
   if CurStep = ssPostInstall then
   begin
-    EnvPath := ExpandConstant('{app}\.env');
-    EnvExamplePath := ExpandConstant('{app}\.env.example');
+    // Déterminer si c'est une première installation (pas de dossier sessions)
+    FirstInstall := not DirExists(ExpandConstant('{app}\sessions'));
     
-    // Déterminer si c'est une première installation
-    FirstInstall := not FileExists(EnvPath);
-    
-    // Si .env n'existe pas, copier le template
+    // CORRECTION : Aucun fichier .env à copier car config embarquée et chiffrée
     if FirstInstall then
     begin
-      if FileExists(ExpandConstant('{app}\config\credentials.example')) then
-        FileCopy(ExpandConstant('{app}\config\credentials.example'), EnvExamplePath, False);
-      
       // Message pour première installation
-      MsgBox('CONFIGURATION REQUISE !' + #13#10#13#10 +
-             'Avant de lancer AutoTele, vous devez :' + #13#10#13#10 +
-             '1. Créer le fichier .env' + #13#10 +
-             '   → Renommez .env.example en .env' + #13#10#13#10 +
-             '2. Ajouter vos credentials Telegram' + #13#10 +
-             '   → https://my.telegram.org' + #13#10#13#10 +
-             '3. Générer une clé de chiffrement' + #13#10 +
-             '   → python -c "import secrets; print(secrets.token_urlsafe(32))"' + #13#10#13#10 +
-             'Consultez README_INSTALLATEUR.txt pour les détails.',
+      MsgBox('INSTALLATION TERMINEE !' + #13#10#13#10 +
+             'AutoTele v1.4.0 a ete installe avec succes.' + #13#10#13#10 +
+             'TOUT EST PRE-CONFIGURE !' + #13#10#13#10 +
+             'Vous pouvez lancer AutoTele immediatement :' + #13#10#13#10 +
+             '1. Creez votre compte AutoTele' + #13#10 +
+             '2. Souscrivez un abonnement (34.99 USD/mois)' + #13#10 +
+             '3. Connectez vos comptes Telegram' + #13#10 +
+             '4. C''est parti !' + #13#10#13#10 +
+             'Consultez README_INSTALLATEUR.txt pour plus de details.',
              mbInformation, MB_OK);
     end
     else if IsUpgradeInstallation then
     begin
       // Message pour mise à jour
-      MsgBox('MISE À JOUR TERMINÉE !' + #13#10#13#10 +
-             '✓ AutoTele a été mis à jour vers la version 1.3.0' + #13#10 +
-             '✓ Vos données ont été préservées' + #13#10 +
-             '✓ Vous pouvez relancer l''application' + #13#10#13#10 +
-             'Nouveautés de la version 1.3.0 :' + #13#10 +
-             '• Sécurité parfaite (score 10/10)' + #13#10 +
-             '• Rate limiting intégré' + #13#10 +
-             '• Validation complète des entrées' + #13#10 +
-             '• Magic bytes pour fichiers',
+MsgBox('MISE A JOUR TERMINEE !' + #13#10#13#10 +
+             'AutoTele a ete mis a jour vers la version 1.4.0' + #13#10#13#10 +
+             'NOUVEAUTES :' + #13#10 +
+             '✓ Configuration securisee et chiffree' + #13#10 +
+             '✓ Messagerie ultra rapide et fluide' + #13#10 +
+             '✓ Affichage photos de profil optimise' + #13#10 +
+             '✓ Performances 2x ameliorees' + #13#10 +
+             '✓ Recherche @username fonctionnelle' + #13#10 +
+             '✓ Interface stable sans bugs' + #13#10#13#10 +
+             'Vos sessions et configuration ont ete preservees.',
              mbInformation, MB_OK);
     end;
   end;
 end;
 
-procedure CreateEnvTemplate();
-var
-  EnvExamplePath: String;
-  EnvPath: String;
-begin
-  EnvExamplePath := ExpandConstant('{app}\config\credentials.example');
-  EnvPath := ExpandConstant('{app}\.env.example');
-  
-  if FileExists(EnvExamplePath) then
-  begin
-    // Copier credentials.example vers .env.example a la racine
-    FileCopy(EnvExamplePath, EnvPath, False);
-  end;
-end;
 
 [Messages]
 ; === MESSAGES PERSONNALISÉS EN FRANÇAIS ===
-french.WelcomeLabel2=Ceci va installer [name/ver] sur votre ordinateur.%n%nAutoTele est une application de gestion Telegram multi-comptes certifiée sécurisée (Score de sécurité: 10/10).%n%nIl est recommandé de fermer toutes les autres applications avant de continuer.
+french.WelcomeLabel2=Ceci va installer [name/ver] sur votre ordinateur.%n%nAutoTele est une application de gestion Telegram multi-comptes certifiée sécurisée.%n%nIl est recommandé de fermer toutes les autres applications avant de continuer.
 
 french.SelectDirLabel3=L''installation va installer [name] dans le dossier suivant.%n%nVous pouvez changer ce dossier si vous le souhaitez en cliquant sur Parcourir.
 
@@ -269,7 +242,7 @@ french.SelectDirBrowseLabel=Pour continuer, cliquez sur Suivant. Pour sélection
 
 french.DiskSpaceGBLabel=L''installation nécessite au moins {#SetupSetting('NumGigabytes')} Go d''espace disque disponible.
 
-french.FinishedLabel=L''installation de [name] est terminée.%n%nIMPORTANT :%n• Créez le fichier .env avec vos credentials%n• Consultez README_INSTALLATEUR.txt%n• Générez votre clé de chiffrement
+french.FinishedLabel=L''installation de [name] est terminée avec succès !%n%n AutoTele est maintenant prêt à être utilisé.%n%n Vous pouvez lancer l''application directement depuis le bureau ou le menu Démarrer.%n%n Pour plus d''informations, consultez README_INSTALLATEUR.txt dans le dossier d''installation.
 
 french.ConfirmUninstall=Êtes-vous sûr de vouloir désinstaller complètement %1 et tous ses composants ?%n%nATTENTION: Vos sessions Telegram et logs seront conservés. Supprimez-les manuellement si nécessaire.
 

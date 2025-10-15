@@ -28,7 +28,10 @@ class ProfilePhotoCache:
     def __init__(self):
         """Initialise le cache des photos."""
         self.db = get_telegram_db()
-        self.photos_dir = Path("temp/photos")
+        
+        # CORRECTION : Utiliser get_temp_dir() pour la cohérence
+        from utils.paths import get_temp_dir
+        self.photos_dir = get_temp_dir() / "photos"
         self.photos_dir.mkdir(parents=True, exist_ok=True)
         
         # Queue pour téléchargements en arrière-plan

@@ -26,11 +26,11 @@ class SessionManager:
         try:
             from utils.encryption import get_encryption
             self.encryption = get_encryption()
-            self.logger.info("🔒 Chiffrement des sessions activé (AES-256 + PBKDF2)")
+            self.logger.info("Chiffrement des sessions active (AES-256 + PBKDF2)")
         except ValueError as e:
-            self.logger.error(f"❌ ERREUR CRITIQUE: Chiffrement désactivé - {e}")
-            self.logger.error("⚠️ Les sessions sont stockées EN CLAIR - RISQUE DE SÉCURITÉ ÉLEVÉ")
-            self.logger.error("📋 Veuillez définir AUTOTELE_ENCRYPTION_KEY dans votre fichier .env")
+            self.logger.error(f"ERREUR CRITIQUE: Chiffrement desactive - {e}")
+            self.logger.error("ATTENTION: Les sessions sont stockees EN CLAIR - RISQUE DE SECURITE ELEVE")
+            self.logger.error("Veuillez definir AUTOTELE_ENCRYPTION_KEY dans votre fichier .env")
             self.encryption = None
     
     def _load_index(self) -> Dict:

@@ -21,8 +21,8 @@ class AutoUpdater:
     # URL de votre serveur de versions (à personnaliser)
     UPDATE_SERVER_URL = "https://votre-serveur.com/autotele/version.json"
     
-    # Ou GitHub Releases (recommandé)
-    GITHUB_API_URL = "https://api.github.com/repos/votre-username/autotele/releases/latest"
+    # GitHub Releases (recommandé)
+    GITHUB_API_URL = "https://api.github.com/repos/gabmerlin/autotele_app/releases/latest"
     
     def __init__(self):
         self.current_version = APP_VERSION

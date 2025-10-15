@@ -4,6 +4,7 @@ Chargement instantané comme Telegram officiel.
 """
 import asyncio
 from datetime import datetime
+from pathlib import Path
 from typing import List, Dict, Optional, Set
 from nicegui import ui
 
@@ -37,12 +38,12 @@ class MessagingPage:
         # État de l'application
         self.state = {
             'selected_accounts': [],
-            'all_conversations': [],
+            'all_conversations': [],  # CONTIENT TOUT (users + groups)
             'filtered_conversations': [],
             'selected_conversation': None,
             'messages': [],
-            'show_groups': False,
-            'show_unread_only': False,  # Nouveau filtre pour messages non lus
+            'show_groups': False,  # CORRECTION : Filtre CÔTÉ CLIENT (pas DB)
+            'show_unread_only': False,  # Filtre messages non lus
             'username_search_result': None,
             'is_searching_username': False,
         }
@@ -58,9 +59,13 @@ class MessagingPage:
         # Cache pour optimisation
         self._photo_exists_cache: Dict[str, bool] = {}
         self._conversation_items: Dict[str, any] = {}  # Mapping conversation_id -> UI element
+        self._photo_base64_cache: Dict[str, str] = {}  # NOUVEAU: Cache base64 des images
         
         # Flags
         self._is_loading = False
+        self._is_downloading_photos = False  # NOUVEAU: Empêche téléchargements multiples
+        self._is_updating_ui = False  # NOUVEAU: Empêche updates UI multiples
+        self._update_timer = None  # NOUVEAU: Timer pour debounce
         self._current_search_text = ''
     
     def render(self) -> None:
@@ -100,24 +105,28 @@ class MessagingPage:
             if not self.state['selected_accounts']:
                 return
             
-            # 1. Charger depuis SQLite selon la préférence show_groups
+            # 1. CORRECTION : Charger TOUT (users + groups) depuis SQLite
+            # Le filtrage se fera côté client pour performance
             conversations = await self.messaging_service.get_conversations_fast(
                 self.state['selected_accounts'],
-                include_groups=self.state['show_groups'],  # Respecter le choix de l'utilisateur
+                include_groups=True,  # TOUJOURS charger tout
                 limit=999,  # Charger TOUTES les conversations
                 telegram_manager=self.telegram_manager
             )
+            
+            # logger.info(f"DB retourne: {len(conversations)} conversations total")
             
             # 2. SI VIDE (premier lancement), forcer une sync immédiate
             if not conversations:
                 logger.info("Base de données vide - Synchronisation initiale avec Telegram...")
                 conversations = await self.messaging_service.get_conversations_fast(
                     self.state['selected_accounts'],
-                    include_groups=self.state['show_groups'],  # Respecter le choix
+                    include_groups=True,  # TOUJOURS tout charger
                     limit=999,  # Charger TOUTES les conversations
                     force_sync=True,  # Force la sync
                     telegram_manager=self.telegram_manager  # IMPORTANT: Passer le manager
                 )
+                # logger.info(f"Apres sync: {len(conversations)} conversations")
             
             # 3. Fusionner avec les noms de comptes
             self._merge_and_display_conversations(conversations)
@@ -134,13 +143,25 @@ class MessagingPage:
         
         Évite les téléchargements multiples et le flickering.
         """
+        # CORRECTION : Empêcher téléchargements multiples simultanés
+        if self._is_downloading_photos:
+            # logger.info("Téléchargement déjà en cours, skip")
+            return
+        
+        self._is_downloading_photos = True
+        
         try:
             # Créer un set des entity_ids déjà en cours de téléchargement
             downloading = set()
             
-            # Pour chaque conversation visible, télécharger la photo si manquante
-            # Limiter aux 30 premières pour éviter surcharge avec beaucoup de conversations
-            for conv in self.state['all_conversations'][:30]:
+            # CORRECTION : Télécharger les photos des conversations FILTRÉES (pas all)
+            # Car c'est ce qui est affiché à l'utilisateur
+            conversations = self.state.get('filtered_conversations', [])
+            
+            # logger.info(f"Telechargement photos pour {len(conversations)} conversations filtrees")
+            
+            # CORRECTION : Télécharger les 15 premières VISIBLES
+            for conv in conversations[:15]:
                 entity_id = conv['entity_id']
                 
                 # Skip si déjà en cours ou déjà téléchargée
@@ -148,6 +169,7 @@ class MessagingPage:
                     continue
                 if conv.get('has_photo') and conv.get('profile_photo'):
                     if self._photo_exists(conv['profile_photo']):
+                        logger.debug(f"Photo déjà en cache pour {entity_id}")
                         continue
                 
                 # Marquer comme en cours
@@ -164,16 +186,18 @@ class MessagingPage:
                 
                 # Télécharger cette photo seulement
                 try:
+                    logger.debug(f"Téléchargement photo pour {entity_id}")
                     entity = await account.client.get_entity(entity_id)
                     photo_path = await self.messaging_service.photo_cache.download_photo(
                         account.client,
                         entity,
                         entity_id,
-                        None  # Pas de callback pour éviter le flickering
+                        None  # CORRECTION : Pas de callback pour éviter les rafraîchissements multiples
                     )
                     
                     if photo_path:
-                        # Mettre à jour silencieusement
+                        logger.debug(f"Photo téléchargée: {photo_path}")
+                        # Mettre à jour silencieusement SANS re-render
                         conv['profile_photo'] = photo_path
                         conv['has_photo'] = True
                         self._photo_exists_cache[photo_path] = True
@@ -184,6 +208,10 @@ class MessagingPage:
                             SET profile_photo_path = ?, has_photo = 1
                             WHERE entity_id = ? AND session_id = ?
                         """, (photo_path, entity_id, session_id))
+                        
+                        # NE PAS appeler _apply_filters() ici pour éviter le flickering
+                    else:
+                        logger.debug(f"Aucune photo téléchargée pour {entity_id}")
                     
                     # Petit délai pour ne pas surcharger
                     await asyncio.sleep(0.2)
@@ -192,42 +220,46 @@ class MessagingPage:
                     logger.debug(f"Erreur téléchargement photo {entity_id}: {e}")
                     continue
             
-            # NE PAS rafraîchir l'affichage automatiquement
-            # Les photos seront visibles au prochain render naturel (évite le flickering)
-            logger.info(f"Téléchargé {len(downloading)} photos de profil en arrière-plan")
+            # CORRECTION : Rafraîchir UNE SEULE FOIS après téléchargement
+            # Cela affichera les photos téléchargées
+            # logger.info(f"Telechargement termine: {len(downloading)} photos de profil en arriere-plan")
+            
+            # Mettre à jour l'affichage UNE FOIS avec les nouvelles photos
+            if downloading:
+                # CORRECTION CRITIQUE : Vider le cache base64 pour les photos téléchargées
+                # Sinon elles ne seront pas converties et affichées
+                for conv in self.state.get('filtered_conversations', []):
+                    photo_path = conv.get('profile_photo')
+                    if photo_path and photo_path in self._photo_base64_cache:
+                        # Supprimer du cache pour forcer reconversion
+                        del self._photo_base64_cache[photo_path]
+                
+                # logger.info("Rafraichissement pour afficher les photos telechargees")
+                
+                # CORRECTION : Utiliser ui.timer pour exécuter dans le contexte UI
+                # Au lieu de _update_conversations_list() directement depuis background
+                ui.timer(0.1, lambda: self._update_conversations_list(), once=True)
         
         except Exception as e:
             logger.error(f"Erreur téléchargement photos: {e}")
+        
+        finally:
+            # CORRECTION : Toujours réinitialiser le flag
+            self._is_downloading_photos = False
     
     def _on_photo_downloaded(self, entity_id: int, photo_path: str):
         """
         Callback appelé quand une photo est téléchargée.
         
+        DÉSACTIVÉ pour éviter les rafraîchissements multiples qui empêchent les clics.
+        Les photos seront visibles au prochain rafraîchissement naturel.
+        
         Args:
             entity_id: ID de l'entité
             photo_path: Chemin de la photo
         """
-        try:
-            # Mettre à jour silencieusement dans les données
-            for conv in self.state['all_conversations']:
-                if conv['entity_id'] == entity_id:
-                    conv['profile_photo'] = photo_path
-                    conv['has_photo'] = True
-                    # Mettre à jour le cache
-                    self._photo_exists_cache[photo_path] = True
-                    break
-            
-            # Si c'est la conversation sélectionnée, mettre à jour l'en-tête seulement
-            if self.state['selected_conversation'] and self.state['selected_conversation']['entity_id'] == entity_id:
-                self.state['selected_conversation']['profile_photo'] = photo_path
-                self.state['selected_conversation']['has_photo'] = True
-                self._update_conversation_header()
-            
-            # NE PAS re-render toute la liste (évite le flickering)
-            # Les photos apparaîtront au prochain rafraîchissement naturel
-        
-        except Exception as e:
-            logger.error(f"Erreur callback photo: {e}")
+        # CORRECTION : Ne rien faire pour éviter le flickering et les problèmes de clics
+        pass
     
     def _setup_realtime_handlers(self):
         """Configure les handlers pour updates en temps réel."""
@@ -276,7 +308,8 @@ class MessagingPage:
                     conv['unread_count'] = 0
                     break
             
-            self._update_conversations_list()
+            # CORRECTION : Ne PAS re-render pour un simple compteur (évite clear inutile)
+            # self._update_conversations_list()  # Commenté - trop de re-renders
         
         except Exception as e:
             logger.error(f"Erreur traitement messages lus UI: {e}")
@@ -397,31 +430,54 @@ class MessagingPage:
         ):
             # Barre de recherche
             with ui.column().classes('w-full p-4 gap-2').style('border-bottom: 1px solid var(--border);'):
-                self.search_input = ui.input(
-                    placeholder='Rechercher ou @username...',
-                    on_change=self._on_search_conversations
-                ).classes('w-full').props('dense outlined')
+                # Input HTML natif pour compatibilité PyInstaller
+                search_html = '''
+                <input 
+                    type="text"
+                    id="search_input_native"
+                    placeholder="Rechercher ou @username..."
+                    style="
+                        width: 100%;
+                        height: 40px;
+                        background: #ffffff;
+                        border: 1px solid #d1d5db;
+                        border-radius: 4px;
+                        font-size: 14px;
+                        padding: 8px 12px;
+                        box-sizing: border-box;
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    "
+                    oninput="window.searchConversations()"
+                />
+                '''
+                self.search_input = ui.html(search_html)
+                
+                # CORRECTION : Créer fonction JavaScript pour debounce
+                ui.run_javascript('''
+                    let searchTimeout;
+                    window.searchConversations = function() {
+                        clearTimeout(searchTimeout);
+                        searchTimeout = setTimeout(() => {
+                            // Déclencher événement côté Python
+                            emitEvent('search_changed', {});
+                        }, 300);  // Debounce 300ms
+                    };
+                ''')
+                
+                # Handler Python pour l'événement
+                async def on_search_event(e):
+                    await self._on_search_conversations(e)
+                
+                ui.on('search_changed', on_search_event)
                 
                 # Checkbox groupes
                 async def toggle_groups(e):
                     self.state['show_groups'] = e.value
+                    # logger.info(f"Toggle groupes: {e.value}")
                     
-                    # Recharger les conversations avec le nouveau filtre
-                    conversations = await self.messaging_service.get_conversations_fast(
-                        self.state['selected_accounts'],
-                        include_groups=self.state['show_groups'],
-                        limit=999,  # Charger TOUTES
-                        force_sync=True,  # Force sync pour charger les groupes si besoin
-                        telegram_manager=self.telegram_manager
-                    )
-                    
-                    self._merge_and_display_conversations(conversations)
-                    
-                    # Réappliquer les filtres de recherche si nécessaire
-                    if self._current_search_text:
-                        self._apply_filters()
-                    
-                    # Ne pas retélécharger les photos à chaque toggle
+                    # CORRECTION : Filtrage côté CLIENT (instantané)
+                    # Plus besoin de recharger depuis DB !
+                    await self._apply_filters()
                 
                 ui.checkbox(
                     'Afficher les groupes',
@@ -430,10 +486,10 @@ class MessagingPage:
                 ).classes('text-sm').style('color: var(--text-primary);')
                 
                 # Checkbox messages non lus uniquement
-                def toggle_unread_only(e):
+                async def toggle_unread_only(e):
                     self.state['show_unread_only'] = e.value
                     # Réappliquer les filtres
-                    self._apply_filters()
+                    await self._apply_filters()
                 
                 ui.checkbox(
                     'Messages non lus seulement',
@@ -472,22 +528,47 @@ class MessagingPage:
         with ui.row().classes('w-full p-4 gap-2 items-end').style(
             'background: var(--bg-primary); border-top: 1px solid var(--border);'
         ):
-            self.message_input = ui.textarea(
-                placeholder='Écrivez votre message...'
-            ).classes('flex-1').props('outlined dense rows=2')
-            
-            self.message_input.on('keydown.enter', self._handle_keydown)
+            # Textarea HTML natif pour compatibilité PyInstaller
+            message_html = '''
+            <textarea 
+                id="message_input_native"
+                placeholder="Écrivez votre message..."
+                rows="2"
+                style="
+                    flex: 1;
+                    width: 100%;
+                    background: #ffffff;
+                    border: 1px solid #d1d5db;
+                    border-radius: 4px;
+                    font-size: 14px;
+                    padding: 8px 12px;
+                    resize: vertical;
+                    box-sizing: border-box;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                "
+                onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); document.getElementById('send_message_btn_native').click(); }"
+            ></textarea>
+            '''
+            self.message_input = ui.html(message_html).classes('flex-1')
             
             async def send_message():
                 if not self.state['selected_conversation']:
                     notify('Sélectionnez une conversation', type='warning')
                     return
                 
-                if not self.message_input.value or not self.message_input.value.strip():
+                # Récupérer le message via JavaScript
+                try:
+                    message_text = await ui.run_javascript('document.getElementById("message_input_native").value', timeout=1.0) or ""
+                    message_text = str(message_text).strip()
+                except Exception as e:
+                    notify('Erreur de lecture du message', type='negative')
+                    return
+                
+                if not message_text:
                     notify('Le message ne peut pas être vide', type='warning')
                     return
                 
-                message = self.message_input.value.strip()
+                message = message_text
                 conv = self.state['selected_conversation']
                 account_session_id = conv.get('session_id')
                 
@@ -509,7 +590,8 @@ class MessagingPage:
                 
                 if success:
                     notify('Message envoyé', type='positive')
-                    self.message_input.value = ''
+                    # Vider le champ via JavaScript
+                    await ui.run_javascript('document.getElementById("message_input_native").value = ""')
                     
                     # Recharger les messages
                     await self._load_messages(conv['entity_id'], account_session_id)
@@ -517,7 +599,7 @@ class MessagingPage:
                     notify('Erreur lors de l\'envoi', type='negative')
             
             with ui.column().classes('gap-1 items-end'):
-                with ui.button(on_click=send_message).props('color=primary').classes('px-6'):
+                with ui.button(on_click=send_message).props('color=primary id=send_message_btn_native').classes('px-6'):
                     with ui.row().classes('items-center gap-1'):
                         ui.html(svg('send', 18, 'white'))
                         ui.label('Envoyer')
@@ -540,7 +622,13 @@ class MessagingPage:
                 # Avatar
                 photo_path = conv.get('profile_photo')
                 if photo_path and self._photo_exists(photo_path):
-                    ui.image(photo_path).style('width: 50px; height: 50px; border-radius: 50%; object-fit: cover;')
+                    # CORRECTION : Utiliser HTML direct avec base64
+                    base64_data = self._get_relative_image_path(photo_path)
+                    if base64_data:
+                        logger.debug(f"Affichage photo header: {photo_path}")
+                        ui.html(f'<img src="{base64_data}" style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover;" />')
+                    else:
+                        logger.warning(f"Base64 vide pour photo header: {photo_path}")
                 else:
                     icon_name = 'person' if conv['type'] == 'user' else 'group' if conv['type'] == 'group' else 'campaign'
                     ui.html(svg(icon_name, 40, 'var(--text-secondary)'))
@@ -571,31 +659,78 @@ class MessagingPage:
                 ui.label('Sélectionnez une conversation').classes('text-lg').style('color: var(--text-secondary);')
     
     def _update_conversations_list(self) -> None:
-        """Met à jour la liste des conversations."""
+        """
+        Met à jour la liste des conversations avec debounce.
+        Utilise un timer pour éviter les updates multiples rapprochées.
+        """
+        # CORRECTION : Annuler le timer précédent s'il existe
+        if self._update_timer:
+            try:
+                self._update_timer.cancel()
+            except:
+                pass
+        
+        # CORRECTION : Schedule l'update avec debounce de 300ms
+        self._update_timer = ui.timer(
+            0.3,  # 300ms de debounce (meilleure fusion des updates)
+            lambda: self._do_update_conversations(),
+            once=True
+        )
+    
+    def _do_update_conversations(self) -> None:
+        """Fait la mise à jour réelle des conversations (appelée après debounce)."""
+        # CORRECTION : Empêcher updates multiples simultanées
+        if self._is_updating_ui:
+            logger.warning("Update UI déjà en cours, skip")
+            return
+        
         if not self.conversations_container:
             return
+        
+        self._is_updating_ui = True
         
         try:
             self.conversations_container.clear()
         except Exception as e:
             # Le client UI peut être fermé, ignorer silencieusement
             logger.debug(f"Impossible de clear conversations_container: {e}")
+            self._is_updating_ui = False
             return
         
         conversations = self.state.get('filtered_conversations') or self.state.get('all_conversations', [])
         
+        # CORRECTION MAJEURE : Limiter à 50 conversations max pour performance
+        # Afficher seulement les 50 premières (largement suffisant pour l'écran)
+        visible_conversations = conversations[:50]
+        
+        # logger.info(f"Affichage de {len(visible_conversations)}/{len(conversations)} conversations")
+        
         try:
             with self.conversations_container:
-                if not conversations:
+                if not visible_conversations:
                     with ui.column().classes('w-full p-8 items-center gap-3'):
                         ui.html(svg('mail_outline', 60, 'var(--text-secondary)'))
-                        ui.label('Aucune conversation').classes('text-lg').style('color: var(--text-secondary);')
+                        if conversations:
+                            ui.label(f'{len(conversations)} conversations masquées').classes('text-lg').style('color: var(--text-secondary);')
+                            ui.label('Utilisez la recherche pour affiner').classes('text-sm').style('color: var(--text-secondary);')
+                        else:
+                            ui.label('Aucune conversation').classes('text-lg').style('color: var(--text-secondary);')
                 else:
-                    for conv in conversations:
+                    for conv in visible_conversations:
                         self._render_conversation_item(conv)
+                    
+                    # Afficher un message si plus de 50 conversations
+                    if len(conversations) > 50:
+                        with ui.card().classes('w-full p-3 text-center').style('border: none; background: #f3f4f6;'):
+                            ui.label(f'+ {len(conversations) - 50} autres conversations').classes('text-sm font-bold').style('color: var(--accent);')
+                            ui.label('💡 Utilisez la recherche pour affiner').classes('text-xs').style('color: var(--text-secondary);')
         except Exception as e:
             # Le client UI peut être fermé, ignorer silencieusement
             logger.debug(f"Impossible de render conversations: {e}")
+        finally:
+            # CORRECTION : Toujours réinitialiser le flag
+            self._is_updating_ui = False
+            self._update_timer = None
     
     def _render_conversation_item(self, conv: Dict) -> None:
         """Rend un élément de conversation."""
@@ -607,10 +742,21 @@ class MessagingPage:
         is_selected = conv_unique_id == selected_unique_id
         style = 'background: rgba(30, 58, 138, 0.1);' if is_selected else ''
         
+        # CORRECTION : Créer une fonction avec les paramètres capturés pour éviter les problèmes de closure
+        entity_id = conv['entity_id']
+        session_id = conv.get('session_id')
+        conv_title = conv.get('title', 'Unknown')
+        
         async def select_conversation():
-            self.state['selected_conversation'] = conv
-            self._update_conversation_header()
-            await self._load_messages(conv['entity_id'], conv.get('session_id'))
+            try:
+                # logger.info(f"Tentative de sélection de conversation: {conv_title} (ID: {entity_id})")
+                self.state['selected_conversation'] = conv
+                self._update_conversation_header()
+                await self._load_messages(entity_id, session_id)
+                # logger.info(f"Conversation sélectionnée avec succès: {conv_title}")
+            except Exception as e:
+                logger.error(f"Erreur lors de la sélection de conversation: {e}")
+                notify(f'Erreur lors de l\'ouverture de la conversation: {str(e)}', type='negative')
         
         with ui.card().classes('w-full p-3 cursor-pointer').style(
             f'{style} border: none; border-bottom: 1px solid var(--border); border-radius: 0; '
@@ -620,7 +766,14 @@ class MessagingPage:
                 # Avatar
                 photo_path = conv.get('profile_photo')
                 if photo_path and self._photo_exists(photo_path):
-                    ui.image(photo_path).style('width: 40px; height: 40px; border-radius: 50%; object-fit: cover;')
+                    # CORRECTION : Utiliser HTML direct avec base64
+                    base64_data = self._get_relative_image_path(photo_path)
+                    if base64_data:
+                        # CORRECTION : Retirer log debug (performance)
+                        ui.html(f'<img src="{base64_data}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;" />')
+                    else:
+                        # Log seulement si problème (warning level)
+                        logger.warning(f"Base64 vide pour photo conversation: {photo_path}")
                 else:
                     icon_name = 'person' if conv['type'] == 'user' else 'group' if conv['type'] == 'group' else 'campaign'
                     ui.html(svg(icon_name, 28, 'var(--text-secondary)'))
@@ -717,7 +870,10 @@ class MessagingPage:
                 # Si déjà téléchargé
                 if media_data and self._photo_exists(media_data):
                     if media_type == 'MessageMediaPhoto':
-                        ui.image(media_data).style('max-width: 500px; max-height: 400px; border-radius: 12px; cursor: pointer;')
+                        # CORRECTION : Utiliser HTML direct avec base64
+                        base64_data = self._get_relative_image_path(media_data)
+                        if base64_data:
+                            ui.html(f'<img src="{base64_data}" style="max-width: 500px; max-height: 400px; border-radius: 12px; cursor: pointer;" />')
                     else:
                         with ui.row().classes('items-center gap-1'):
                             ui.html(svg('attach_file', 18, 'var(--accent)'))
@@ -767,10 +923,15 @@ class MessagingPage:
     async def _load_messages(self, chat_id: int, account_session_id: str) -> None:
         """Charge les messages d'une conversation."""
         try:
+            # logger.info(f"Chargement des messages pour chat_id={chat_id}, session_id={account_session_id}")
+            
             account = self.telegram_manager.get_account(account_session_id)
             if not account or not account.is_connected:
+                logger.error(f"Compte non connecté: session_id={account_session_id}")
                 ui.notify('Compte non connecté', type='negative')
                 return
+            
+            # logger.info(f"Compte trouvé et connecté: {account_session_id}")
             
             # Charger via le service (SQLite en priorité)
             messages = await self.messaging_service.get_messages_fast(
@@ -780,6 +941,8 @@ class MessagingPage:
                 limit=200  # Plus de messages (au lieu de 50)
             )
             
+            # logger.info(f"Messages chargés: {len(messages)} messages pour chat_id={chat_id}")
+            
             self.state['messages'] = messages
             self._update_messages_display()
             
@@ -787,6 +950,7 @@ class MessagingPage:
             
             # Marquer comme lu
             await self.messaging_service.mark_as_read(account, chat_id)
+            # logger.info(f"Messages marqués comme lus pour chat_id={chat_id}")
         
         except Exception as e:
             logger.error(f"Erreur chargement messages: {e}")
@@ -835,23 +999,52 @@ class MessagingPage:
                 conv['session_id'] = account_names_to_session[account_name]
         
         self.state['all_conversations'] = merged_conversations
-        self._apply_filters()
+        
+        # Compter les types
+        users_count = sum(1 for c in merged_conversations if c.get('type') == 'user')
+        groups_count = sum(1 for c in merged_conversations if c.get('type') in ['group', 'channel'])
+        
+        # logger.info(f"Conversations chargees - Total: {len(merged_conversations)} (Users: {users_count}, Groups: {groups_count})")
+        
+        # CORRECTION : Initialiser filtered_conversations avec toutes les conversations
+        self.state['filtered_conversations'] = merged_conversations.copy()
+        
+        # logger.info(f"Filtered initialise: {len(self.state['filtered_conversations'])} conversations")
+        
+        # CORRECTION : Appliquer les filtres CÔTÉ CLIENT + Affichage IMMÉDIAT
+        # Version SANS debounce pour l'initialisation
+        self._apply_filters_and_display_immediate()
+        
+        # CORRECTION : Télécharger les photos UNE SEULE FOIS
+        # Le flag _is_downloading_photos empêche les appels multiples
+        asyncio.create_task(self._download_photos_background())
     
-    def _on_search_conversations(self, e) -> None:
+    async def _on_search_conversations(self, e) -> None:
         """Filtre les conversations par recherche."""
-        search_text = e.value
+        # Récupérer le texte de recherche via JavaScript
+        try:
+            search_text = await ui.run_javascript('document.getElementById("search_input_native").value', timeout=0.5) or ""
+            search_text = str(search_text)
+        except Exception:
+            search_text = ""
+        
         self._current_search_text = search_text
         
         # Recherche @username
         if search_text and search_text.startswith('@'):
-            if len(search_text.lstrip('@')) >= 5:
+            clean = search_text.lstrip('@')
+            # logger.info(f"Recherche @username: '{search_text}' (longueur: {len(clean)})")
+            
+            if len(clean) >= 5:
+                # logger.info(f"Lancement recherche pour: @{clean}")
                 asyncio.create_task(self._search_username(search_text))
             else:
+                # logger.info(f"Username trop court ({len(clean)} < 5 caracteres)")
                 self.state['username_search_result'] = None
-                self._apply_filters()
+                await self._apply_filters()
         else:
             self.state['username_search_result'] = None
-            self._apply_filters()
+            await self._apply_filters()
     
     async def _search_username(self, username: str) -> None:
         """Recherche un utilisateur par @username."""
@@ -894,7 +1087,7 @@ class MessagingPage:
                     self.state['all_conversations'].insert(0, result)
                 
                 self.state['username_search_result'] = result
-                self._apply_filters()
+                await self._apply_filters()
             else:
                 self.state['username_search_result'] = None
         
@@ -905,19 +1098,28 @@ class MessagingPage:
         finally:
             self.state['is_searching_username'] = False
     
-    def _apply_filters(self) -> None:
-        """Applique les filtres de recherche."""
+    def _apply_filters_and_display_immediate(self) -> None:
+        """
+        Applique les filtres ET affiche IMMÉDIATEMENT (sans debounce).
+        Utilisée lors de l'initialisation pour affichage instantané.
+        """
         search_text = self._current_search_text
-        
-        if search_text and self.search_input:
-            self.search_input.value = search_text
         
         # Recherche @username
         if search_text and search_text.startswith('@') and self.state.get('username_search_result'):
             self.state['filtered_conversations'] = [self.state['username_search_result']]
         else:
-            # Commencer avec les conversations actuelles
-            filtered = self.state['all_conversations'].copy()
+            # Commencer avec TOUTES les conversations
+            filtered = self.state.get('all_conversations', []).copy()
+            
+            # logger.info(f"Depart filtrage: {len(filtered)} conversations")
+            
+            # CORRECTION : Filtre GROUPES côté client (pas DB)
+            if not self.state.get('show_groups', False):
+                filtered = [
+                    conv for conv in filtered
+                    if conv.get('type') == 'user'
+                ]
             
             # Appliquer le filtre de texte (recherche dans le titre)
             if search_text and not search_text.startswith('@'):
@@ -928,15 +1130,74 @@ class MessagingPage:
                 ]
             
             # Filtre messages non lus seulement
-            if self.state['show_unread_only']:
+            if self.state.get('show_unread_only', False):
                 filtered = [
                     conv for conv in filtered
                     if conv.get('unread_count', 0) > 0
                 ]
             
+            # CORRECTION : Toujours définir filtered_conversations
             self.state['filtered_conversations'] = filtered
+            # logger.info(f"Filtres appliques: {len(filtered)} conversations affichees")
         
+        # CORRECTION : Affichage IMMÉDIAT sans debounce pour l'initialisation
+        self._do_update_conversations()
+    
+    def _apply_filters_sync(self) -> None:
+        """
+        Applique les filtres de recherche (VERSION SYNCHRONE avec debounce).
+        Utilisée pour les événements UI (toggles, etc.).
+        """
+        search_text = self._current_search_text
+        
+        # Recherche @username
+        if search_text and search_text.startswith('@') and self.state.get('username_search_result'):
+            self.state['filtered_conversations'] = [self.state['username_search_result']]
+        else:
+            # Commencer avec TOUTES les conversations
+            filtered = self.state.get('all_conversations', []).copy()
+            
+            # logger.info(f"Depart filtrage: {len(filtered)} conversations")
+            
+            # CORRECTION : Filtre GROUPES côté client (pas DB)
+            if not self.state.get('show_groups', False):
+                filtered = [
+                    conv for conv in filtered
+                    if conv.get('type') == 'user'
+                ]
+            
+            # Appliquer le filtre de texte (recherche dans le titre)
+            if search_text and not search_text.startswith('@'):
+                search_lower = search_text.lower()
+                filtered = [
+                    conv for conv in filtered
+                    if search_lower in conv['title'].lower()
+                ]
+            
+            # Filtre messages non lus seulement
+            if self.state.get('show_unread_only', False):
+                filtered = [
+                    conv for conv in filtered
+                    if conv.get('unread_count', 0) > 0
+                ]
+            
+            # CORRECTION : Toujours définir filtered_conversations
+            self.state['filtered_conversations'] = filtered
+            # logger.info(f"Filtres appliques: {len(filtered)} conversations affichees")
+        
+        # CORRECTION : Utilise debounce pour événements UI
         self._update_conversations_list()
+    
+    async def _apply_filters(self) -> None:
+        """Applique les filtres de recherche (VERSION ASYNC pour événements UI)."""
+        search_text = self._current_search_text
+        
+        if search_text and self.search_input:
+            # Définir la valeur via JavaScript
+            await ui.run_javascript(f'document.getElementById("search_input_native").value = "{search_text}"')
+        
+        # Appeler la version synchrone pour le filtrage
+        self._apply_filters_sync()
     
     async def _handle_keydown(self, e) -> None:
         """Gère l'envoi avec Entrée."""
@@ -947,12 +1208,21 @@ class MessagingPage:
             notify('Sélectionnez une conversation', type='warning')
             return
         
-        if not self.message_input.value or not self.message_input.value.strip():
+        # Récupérer le message via JavaScript
+        try:
+            message_text = await ui.run_javascript('document.getElementById("message_input_native").value', timeout=1.0) or ""
+            message_text = str(message_text).strip()
+        except Exception:
+            notify('Erreur de lecture du message', type='negative')
+            return
+        
+        if not message_text:
             notify('Le message ne peut pas être vide', type='warning')
             return
         
-        message = self.message_input.value.strip()
-        self.message_input.value = ''
+        message = message_text
+        # Vider le champ via JavaScript
+        await ui.run_javascript('document.getElementById("message_input_native").value = ""')
         
         conv = self.state['selected_conversation']
         account_session_id = conv.get('session_id')
@@ -1083,6 +1353,30 @@ class MessagingPage:
         self._photo_exists_cache[photo_path] = exists
         
         return exists
+    
+    def _get_relative_image_path(self, photo_path: str) -> str:
+        """
+        Convertit un chemin absolu d'image en URL relative pour PyInstaller.
+        Utilise un cache pour éviter les conversions multiples.
+        
+        Args:
+            photo_path: Chemin absolu vers l'image
+            
+        Returns:
+            str: URL relative pour NiceGUI ou data URL base64
+        """
+        # CORRECTION : Utiliser le cache base64
+        if photo_path in self._photo_base64_cache:
+            return self._photo_base64_cache[photo_path]
+        
+        # Si pas en cache, convertir et mettre en cache
+        from utils.paths import get_image_base64_data
+        base64_data = get_image_base64_data(photo_path)
+        
+        if base64_data:
+            self._photo_base64_cache[photo_path] = base64_data
+            
+        return base64_data if base64_data else ""
     
     @staticmethod
     def _format_date(date: datetime) -> str:
