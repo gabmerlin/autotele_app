@@ -16,8 +16,8 @@
 [Setup]
 ; === INFORMATIONS APPLICATION ===
 AppName=AutoTele
-AppVersion=2.0.1
-AppVerName=AutoTele 2.0.1
+AppVersion=2.1.1
+AppVerName=AutoTele 2.1.1
 AppPublisher=AutoTele Team
 AppPublisherURL=https://github.com/gabmerlin/autotele_app
 AppSupportURL=https://github.com/gabmerlin/autotele_app/issues
@@ -51,7 +51,7 @@ WizardSmallImageFile=assets\wizard_small.bmp
 
 ; === SORTIE ===
 OutputDir=installer_output
-OutputBaseFilename=AutoTele-Setup-v2.0.1
+OutputBaseFilename=AutoTele-Setup-v2.1.1
 
 ; === COMPRESSION (Maximum) ===
 Compression=lzma2/ultra64

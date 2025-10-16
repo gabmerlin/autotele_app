@@ -1,9 +1,9 @@
 {
-  "version": "2.0.2",
+  "version": "2.1.1",
   "build": "20251016",
   "download_url": "https://github.com/gabmerlin/autotele_app/releases/latest",
-  "direct_exe_url": "https://github.com/gabmerlin/autotele_app/releases/download/v2.0.2/AutoTele-Setup-v2.0.2.exe",
-  "release_notes": "🎉 Version 2.0.2 - Améliorations et corrections\n\n✨ NOUVELLES FONCTIONNALITÉS:\n• Planification limitée à 15 jours pour plus de stabilité\n• Horaires prédéfinis optionnels selon vos paramètres\n• Système de mise à jour amélioré et fonctionnel\n\n🐛 CORRECTIONS:\n• Sessions Telegram persistantes (plus de reconnexion)\n• Chiffrement natif Telethon (performances améliorées)\n• Interface plus intuitive et réactive",
+  "direct_exe_url": "https://github.com/gabmerlin/autotele_app/releases/download/v2.1.1/AutoTele-Setup-v2.1.1.exe",
+  "release_notes": "🎉 Version 2.1.1 - Stabilité et améliorations\n\n✨ NOUVELLES FONCTIONNALITÉS:\n• Planification limitée à 15 jours pour plus de stabilité\n• Horaires prédéfinis optionnels selon vos paramètres\n• Système de mise à jour amélioré et fonctionnel\n\n🐛 CORRECTIONS:\n• Sessions Telegram persistantes (plus de reconnexion)\n• Chiffrement natif Telethon (performances améliorées)\n• Interface plus intuitive et réactive",
   "required": false,
   "min_version": "2.0.0",
   "changelog": [
