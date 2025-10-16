@@ -36,6 +36,8 @@ Ce fichier est généré automatiquement par encrypt_env.py
 """
 
 import base64
+import json
+import os
 from cryptography.fernet import Fernet
 
 # Clé de déchiffrement (base64)
@@ -71,10 +73,48 @@ def get_decrypted_app_config():
         print(f"Erreur lors du déchiffrement de app_config.json: {{e}}")
         return {{}}
 
+def set_env_from_embedded():
+    """
+    Injecte les variables d'environnement déchiffrées dans os.environ.
+    Cette fonction charge la config chiffrée et la met en mémoire.
+    """
+    try:
+        env_content = get_decrypted_env()
+        if not env_content:
+            print("[ERREUR] Impossible de déchiffrer le .env")
+            return False
+        
+        # Parser le contenu du .env et injecter dans os.environ
+        for line in env_content.split('\\n'):
+            line = line.strip()
+            # Ignorer les commentaires et lignes vides
+            if not line or line.startswith('#'):
+                continue
+            
+            # Parser KEY=VALUE
+            if '=' in line:
+                key, value = line.split('=', 1)
+                key = key.strip()
+                value = value.strip()
+                
+                # Retirer les guillemets si présents
+                if value.startswith('"') and value.endswith('"'):
+                    value = value[1:-1]
+                elif value.startswith("'") and value.endswith("'"):
+                    value = value[1:-1]
+                
+                # Injecter dans os.environ
+                os.environ[key] = value
+        
+        print("[OK] Configuration déchiffrée et chargée en mémoire")
+        return True
+        
+    except Exception as e:
+        print(f"[ERREUR] Échec du chargement de la config: {{e}}")
+        return False
+
 def save_decrypted_files():
     """Sauvegarde les fichiers déchiffrés pour le développement"""
-    import os
-    
     # Créer le dossier config s'il n'existe pas
     os.makedirs('config', exist_ok=True)
     

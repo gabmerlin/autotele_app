@@ -1,5 +1,5 @@
 ================================================================
-AUTOTELE v2.1.2 - GUIDE D'INSTALLATION
+AUTOTELE v2.1.3 - GUIDE D'INSTALLATION
 ================================================================
 
 Merci d'avoir installé AutoTele, l'application de gestion Telegram 

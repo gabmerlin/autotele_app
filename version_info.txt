@@ -5,10 +5,10 @@
 #
 VSVersionInfo(
   ffi=FixedFileInfo(
-    # Version du fichier (2.1.1.0)
-    filevers=(2, 1, 2, 0),
-    # Version du produit (2.1.1.0)
-    prodvers=(2, 1, 2, 0),
+    # Version du fichier (2.1.3.0)
+    filevers=(2, 1, 3, 0),
+    # Version du produit (2.1.3.0)
+    prodvers=(2, 1, 3, 0),
     # Masque de flags
     mask=0x3f,
     # Flags - IMPORTANT: VOS_VERSION pour forcer l'icône
@@ -30,13 +30,13 @@ VSVersionInfo(
         [
           StringStruct(u'CompanyName', u'AutoTele Solutions'),
           StringStruct(u'FileDescription', u'AutoTele - Gestionnaire Telegram Professionnel'),
-          StringStruct(u'FileVersion', u'2.1.2.0'),
+          StringStruct(u'FileVersion', u'2.1.3.0'),
           StringStruct(u'InternalName', u'AutoTele'),
           StringStruct(u'LegalCopyright', u'Copyright (C) 2025 AutoTele Solutions. Tous droits réservés.'),
           StringStruct(u'LegalTrademarks', u'AutoTele est une marque déposée'),
           StringStruct(u'OriginalFilename', u'AutoTele.exe'),
           StringStruct(u'ProductName', u'AutoTele - Gestionnaire Telegram Professionnel'),
-          StringStruct(u'ProductVersion', u'2.1.2.0'),
+          StringStruct(u'ProductVersion', u'2.1.3.0'),
           StringStruct(u'Comments', u'Application légitime - Certifiée sécurisée | Chiffrement AES-256 | Conformité RGPD'),
           StringStruct(u'Author', u'AutoTele Solutions'),
           StringStruct(u'WebSite', u'https://autotele-solutions.com')

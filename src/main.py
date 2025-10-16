@@ -31,9 +31,6 @@ from utils.paths import get_temp_dir
 # CORRECTION : Charger la configuration embarquée chiffrée
 from utils.embedded_config import set_env_from_embedded
 
-# SÉCURITÉ : Protection anti-debug
-from utils.anti_debug import check_debug_on_startup, get_anti_debug
-
 logger = get_logger()
 
 
@@ -85,17 +82,9 @@ def cleanup_temp_files() -> None:
 
 def main() -> None:
     """Point d'entrée principal de l'application."""
-    # SÉCURITÉ : Vérification anti-debug au démarrage (AVANT TOUT)
-    # Détecte si l'application est lancée dans un debugger
-    check_debug_on_startup(strict=False)  # strict=False pour ne pas bloquer les VMs
-    
-    # CORRECTION : Charger la configuration embarquée chiffrée
+    # Charger la configuration embarquée chiffrée
     # Cela injecte les variables d'environnement en mémoire
     set_env_from_embedded()
-    
-    # SÉCURITÉ : Lancer les vérifications anti-debug continues (toutes les 30s)
-    anti_debug = get_anti_debug()
-    anti_debug.run_continuous_checks(interval=30)
     
     # Créer tous les répertoires nécessaires (compatible PyInstaller)
     from utils.paths import ensure_all_directories
@@ -170,5 +159,14 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        # Fermeture normale de l'application
+        logger.info("Application fermée par l'utilisateur")
+    except Exception as e:
+        # Erreur inattendue
+        logger.error(f"Erreur fatale lors de l'exécution: {e}")
+        import traceback
+        traceback.print_exc()
 

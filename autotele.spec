@@ -176,6 +176,9 @@ a = Analysis(
         'sphinx',
         'IPython',
         'jupyter',
+        # Modules de sécurité qui déclenchent les antivirus (désactivés temporairement)
+        'utils.anti_debug',
+        'psutil',  # Utilisé uniquement par anti_debug
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
