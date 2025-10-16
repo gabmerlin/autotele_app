@@ -1,27 +1,23 @@
 {
-  "version": "1.3.0",
-  "build": "20251014",
-  "download_url": "https://votre-serveur.com/downloads/AutoTele-Setup-v1.3.0.exe",
-  "direct_exe_url": "https://votre-serveur.com/downloads/AutoTele.exe",
-  "release_notes": "Version 1.3.0 - Sécurité Parfaite\n\n✅ Nouveautés:\n• Sécurité parfaite (score 10/10)\n• Chiffrement AES-256 des sessions\n• Protection complète contre injections SQL\n• Validation XSS/injection des messages\n• Rate limiting intégré\n• Magic bytes pour fichiers\n• Permissions Windows (ACLs)\n\n✅ Corrections:\n• 9 vulnérabilités corrigées\n• 30 tests de sécurité passés\n• Compatible PyInstaller",
+  "version": "2.0.2",
+  "build": "20251016",
+  "download_url": "https://github.com/gabmerlin/autotele_app/releases/latest",
+  "direct_exe_url": "https://github.com/gabmerlin/autotele_app/releases/download/v2.0.2/AutoTele-Setup-v2.0.2.exe",
+  "release_notes": "🎉 Version 2.0.2 - Améliorations et corrections\n\n✨ NOUVELLES FONCTIONNALITÉS:\n• Planification limitée à 15 jours pour plus de stabilité\n• Horaires prédéfinis optionnels selon vos paramètres\n• Système de mise à jour amélioré et fonctionnel\n\n🐛 CORRECTIONS:\n• Sessions Telegram persistantes (plus de reconnexion)\n• Chiffrement natif Telethon (performances améliorées)\n• Interface plus intuitive et réactive",
   "required": false,
-  "min_version": "1.0.0",
+  "min_version": "2.0.0",
   "changelog": [
-    "✅ Sécurité parfaite (score 10/10)",
-    "✅ Chiffrement des sessions AES-256",
-    "✅ Protection contre injections SQL",
-    "✅ Validation complète des entrées (XSS)",
-    "✅ Rate limiting intégré",
-    "✅ Magic bytes pour détection fichiers",
-    "✅ Permissions Windows (ACLs)",
-    "✅ Sanitisation complète des logs",
-    "✅ Validation automatique de la configuration"
+    "✨ Planification limitée à 15 jours maximum",
+    "✨ Horaires par défaut désormais optionnels",
+    "🔧 Sessions Telegram persistantes entre redémarrages",
+    "🔧 Chiffrement natif Telethon (plus simple et stable)",
+    "🔧 Système de mise à jour corrigé et fonctionnel",
+    "🎨 Interface optimisée et améliorations UX"
   ],
   "file_size_mb": 160,
-  "sha256": "hash_a_generer_apres_compilation",
-  "release_date": "2025-10-14",
-  "download_page": "https://autotele.app/download",
-  "documentation": "https://autotele.app/docs",
-  "support": "https://autotele.app/support"
+  "sha256": "A_CALCULER_LORS_DE_LA_COMPILATION",
+  "release_date": "2025-10-16",
+  "download_page": "https://github.com/gabmerlin/autotele_app/releases",
+  "documentation": "https://github.com/gabmerlin/autotele_app/blob/main/README_INSTALLATEUR.txt",
+  "support": "https://github.com/gabmerlin/autotele_app/issues"
 }
-

@@ -242,13 +242,7 @@ class AccountDialogs:
                                 type='positive'
                             )
                             dialog.close()
-                            ui.timer(
-                                0.2,
-                                lambda: asyncio.create_task(
-                                    on_success_callback()
-                                ),
-                                once=True
-                            )
+                            await on_success_callback()
                         else:
                             notify(error, type='negative')
                     except Exception as e:
@@ -287,11 +281,7 @@ class AccountDialogs:
             """Confirme la suppression."""
             await self.telegram_manager.remove_account(session_id)
             notify('Compte supprimé', type='positive')
-            ui.timer(
-                0.2,
-                lambda: asyncio.create_task(on_success_callback()),
-                once=True
-            )
+            await on_success_callback()
 
         confirm_dialog = ConfirmDialog(
             title="Supprimer le compte ?",
@@ -435,13 +425,7 @@ class AccountDialogs:
                                         type='positive'
                                     )
                                     verification_dialog.close()
-                                    ui.timer(
-                                        0.2,
-                                        lambda: asyncio.create_task(
-                                            on_success_callback()
-                                        ),
-                                        once=True
-                                    )
+                                    await on_success_callback()
                                 else:
                                     notify(error, type='negative')
                             except Exception as e:

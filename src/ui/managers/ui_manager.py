@@ -206,7 +206,7 @@ class UIManager:
     ) -> None:
         """Crée un bouton de menu."""
         with ui.button(
-            on_click=lambda: asyncio.create_task(show_page_callback(page))
+            on_click=lambda: show_page_callback(page)
         ).props('flat align=left').classes(
             'w-full sidebar-btn text-white'
         ):

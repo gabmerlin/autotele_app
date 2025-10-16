@@ -127,43 +127,12 @@ class AuthManager:
                                 timeout=3000
                             )
                             update_display_callback()
-                            ui.timer(
-                                1.0,
-                                lambda: self._reload_interface_after_payment(),
-                                once=True
-                            )
                         except Exception as e:
                             logger.error(f"Erreur dans update_ui: {e}")
 
                     ui.timer(0.1, update_ui, once=True)
-                else:
-                    ui.timer(
-                        0.1,
-                        lambda: ui.notify(
-                            "Paiement en cours de validation...",
-                            type='info'
-                        ),
-                        once=True
-                    )
-            else:
-                ui.timer(
-                    0.1,
-                    lambda: ui.notify(
-                        "Erreur: utilisateur non connecté",
-                        type='negative'
-                    ),
-                    once=True
-                )
         except Exception as e:
             logger.error(f"Erreur lors du callback de paiement: {e}")
-            ui.timer(
-                0.1,
-                lambda: ui.notify(
-                    "Erreur lors de l'activation de l'abonnement",
-                    type='negative'
-                ),
-                once=True
-            )
 
     def sync_refresh_subscription_status(self):
         """Rafraîchit le statut d'abonnement (wrapper synchrone)."""
@@ -225,11 +194,7 @@ class AuthManager:
 
                 if new_exists and not old_has_subscription:
                     try:
-                        ui.timer(
-                            0.5,
-                            lambda: self._reload_interface_after_payment(),
-                            once=True
-                        )
+                        ui.timer(0.5, self._reload_interface_after_payment, once=True)
                     except Exception as timer_error:
                         # Si on est dans un contexte sans slot UI, appeler directement
                         logger.debug(f"Appel direct de _reload_interface_after_payment (pas de slot UI): {timer_error}")

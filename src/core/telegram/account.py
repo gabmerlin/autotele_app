@@ -69,11 +69,8 @@ class TelegramAccount:
         """
         try:
             if session_file is None:
-                # Utiliser get_session_for_client (déchiffre automatiquement)
-                session_file = (
-                    self.session_manager.get_session_for_client(
-                        self.session_id
-                    )
+                session_file = self.session_manager.get_session_for_client(
+                    self.session_id
                 )
 
             self.client = TelegramClient(
@@ -81,28 +78,36 @@ class TelegramAccount:
                 self.api_id,
                 self.api_hash
             )
+            
             await self.client.connect()
 
             if not await self.client.is_user_authorized():
                 self.is_connected = False
+                await self.disconnect()
                 return False
 
             self.is_connected = True
             self.session_manager.update_last_used(self.session_id)
+            logger.info(f"Compte {self.account_name} connecté avec succès")
             return True
 
         except Exception as e:
-            logger.error(
-                f"Erreur connexion compte {self.account_name}: {e}"
-            )
+            logger.error(f"Erreur connexion compte {self.account_name}: {e}")
+            await self.disconnect()
             self.is_connected = False
             return False
 
     async def disconnect(self) -> None:
         """Déconnecte le compte."""
         if self.client:
-            await self.client.disconnect()
-            self.is_connected = False
+            try:
+                await self.client.disconnect()
+                logger.debug(f"Compte {self.account_name} déconnecté")
+            except Exception as e:
+                logger.warning(f"Erreur lors de la déconnexion de {self.account_name}: {e}")
+            finally:
+                self.client = None
+                self.is_connected = False
     
     async def send_code_request(self) -> bool:
         """

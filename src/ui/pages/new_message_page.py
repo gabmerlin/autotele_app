@@ -501,7 +501,6 @@ class NewMessagePage:
                         with ui.row().classes('gap-2 flex-wrap'):
                             ui.button('1 SEMAINE', on_click=lambda: self._select_date_range(7)).props('outline size=sm')
                             ui.button('2 SEMAINES', on_click=lambda: self._select_date_range(14)).props('outline size=sm')
-                            ui.button('1 MOIS', on_click=lambda: self._select_date_range(30)).props('outline size=sm')
                             ui.button('EFFACER TOUT', on_click=self._clear_dates).props('outline size=sm').classes('text-red-500')
                 
                 # === COLONNE 2: HORAIRES ===
@@ -596,6 +595,7 @@ class NewMessagePage:
         
         # Grille des jours
         today = date.today()
+        max_date = today + timedelta(days=15)  # Limite de 15 jours après aujourd'hui
         
         for week in cal:
             with ui.row().classes('gap-1 mb-1 w-full'):
@@ -608,6 +608,7 @@ class NewMessagePage:
                         is_selected = day_date in self.state['selected_dates']
                         is_today = day_date == today
                         is_past = day_date <= today
+                        is_too_far = day_date > max_date  # Vérifier si au-delà de 15 jours
                         
                         # Classes CSS selon l'état - taille fixe pour uniformité
                         classes = 'w-10 h-10 text-center rounded border-2'
@@ -615,13 +616,13 @@ class NewMessagePage:
                             classes += ' bg-blue-500 text-white border-blue-600'
                         elif is_today:
                             classes += ' bg-yellow-100 text-yellow-800 border-yellow-300'
-                        elif is_past:
+                        elif is_past or is_too_far:
                             classes += ' bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
                         else:
                             classes += ' bg-white hover:bg-gray-100 border-gray-200 cursor-pointer'
                         
                         # Bouton ou label selon si c'est sélectionnable
-                        if is_past:
+                        if is_past or is_too_far:
                             ui.label(str(day)).classes(classes)
                         else:
                             ui.button(
@@ -655,10 +656,15 @@ class NewMessagePage:
         pass
     
     def _select_date_range(self, days: int) -> None:
-        """Sélectionne une plage de dates en supprimant les précédentes."""
+        """Sélectionne une plage de dates en supprimant les précédentes (max 15 jours)."""
         today = date.today()
+        max_date = today + timedelta(days=15)
+        
+        # Limiter à 15 jours maximum
+        days_to_select = min(days, 15)
+        
         # Commencer à partir de demain (aujourd'hui + 1 jour)
-        new_dates = [today + timedelta(days=i) for i in range(1, days + 1)]
+        new_dates = [today + timedelta(days=i) for i in range(1, days_to_select + 1)]
         
         # Supprimer toutes les dates existantes d'abord
         self.state['selected_dates'] = []
@@ -667,7 +673,7 @@ class NewMessagePage:
         self.state['selected_dates'] = new_dates
         self.state['selected_dates'].sort()
         
-        notify(f'{days} jour(s) sélectionné(s) (à partir de demain)', type='positive')
+        notify(f'{days_to_select} jour(s) sélectionné(s) (à partir de demain)', type='positive')
         # Mettre à jour seulement les conteneurs nécessaires
         self._update_calendar_display()
         self._update_final_schedule_display()
@@ -692,10 +698,16 @@ class NewMessagePage:
     def _toggle_date(self, day_date: date) -> None:
         """Bascule la sélection d'une date."""
         today = date.today()
+        max_date = today + timedelta(days=15)
         
         # Empêcher la sélection des jours passés et du jour actuel
         if day_date <= today:
             notify('Impossible de sélectionner une date passée ou le jour actuel', type='negative')
+            return
+        
+        # Empêcher la sélection au-delà de 15 jours
+        if day_date > max_date:
+            notify('Impossible de sélectionner une date au-delà de 15 jours', type='negative')
             return
         
         if day_date in self.state['selected_dates']:
@@ -744,8 +756,7 @@ class NewMessagePage:
                 schedule_with_source['source'] = 'default'
                 if not any(s['time'] == schedule['time'] for s in self.state['selected_schedules']):
                     self.state['selected_schedules'].append(schedule_with_source)
-        else:
-            ui.label('Aucun horaire par défaut').classes('text-sm text-gray-500')
+        # CORRECTION : Ne rien afficher si aucun horaire par défaut n'est configuré
     
     def _get_default_schedules_for_account(self, account_name: str) -> list:
         """Récupère les horaires par défaut pour un compte donné."""
@@ -769,21 +780,13 @@ class NewMessagePage:
                 elif isinstance(default_schedules[0], str):
                     return [{'time': schedule, 'label': schedule} for schedule in default_schedules]
             
-            # Si pas d'horaires définis, utiliser des horaires par défaut
-            return [
-                {'time': '09:00', 'label': 'Matin'},
-                {'time': '12:00', 'label': 'Midi'},
-                {'time': '18:00', 'label': 'Soir'}
-            ]
+            # Si pas d'horaires définis, retourner une liste vide
+            return []
             
         except Exception as e:
             logger.error(f"Erreur récupération horaires par défaut pour {account_name}: {e}")
-            # Retourner des horaires par défaut en cas d'erreur
-            return [
-                {'time': '09:00', 'label': 'Matin'},
-                {'time': '12:00', 'label': 'Midi'},
-                {'time': '18:00', 'label': 'Soir'}
-            ]
+            # Retourner une liste vide en cas d'erreur
+            return []
     
     def _render_manual_schedules_to_container(self, container) -> None:
         """Affiche les horaires ajoutés manuellement dans un conteneur spécifique."""

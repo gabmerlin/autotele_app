@@ -16,6 +16,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from utils.logger import get_logger
+from utils.paths import get_config_dir
 
 logger = get_logger()
 
@@ -26,8 +27,11 @@ class SessionEncryption:
     # Nombre d'itérations pour PBKDF2 (100k = bon compromis sécurité/performance)
     ITERATIONS = 100_000
     
-    # Chemin du fichier de salt (unique par installation)
-    SALT_FILE = Path("config/.encryption_salt")
+    # Chemin du fichier de salt (unique par installation) - compatible PyInstaller
+    @property
+    def SALT_FILE(self) -> Path:
+        """Retourne le chemin du fichier de salt (compatible PyInstaller)."""
+        return get_config_dir() / ".encryption_salt"
     
     def __init__(self, encryption_key: Optional[str] = None):
         """
@@ -68,9 +72,11 @@ class SessionEncryption:
             bytes: Salt de 32 bytes
         """
         try:
+            salt_file = self.SALT_FILE
+            
             # Vérifier si le salt existe déjà
-            if self.SALT_FILE.exists():
-                with open(self.SALT_FILE, 'rb') as f:
+            if salt_file.exists():
+                with open(salt_file, 'rb') as f:
                     salt = f.read()
                 
                 # Valider la longueur
@@ -85,16 +91,16 @@ class SessionEncryption:
             new_salt = secrets.token_bytes(32)
             
             # Créer le répertoire si nécessaire
-            self.SALT_FILE.parent.mkdir(parents=True, exist_ok=True)
+            salt_file.parent.mkdir(parents=True, exist_ok=True)
             
             # Stocker le salt
-            with open(self.SALT_FILE, 'wb') as f:
+            with open(salt_file, 'wb') as f:
                 f.write(new_salt)
             
             # Permissions restrictives (Windows et Unix)
             try:
                 from utils.file_permissions import FilePermissions
-                success, msg = FilePermissions.set_secure_file_permissions(self.SALT_FILE)
+                success, msg = FilePermissions.set_secure_file_permissions(salt_file)
                 if success:
                     logger.debug(f"Permissions salt sécurisées: {msg}")
                 else:

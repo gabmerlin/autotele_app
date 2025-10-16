@@ -30,6 +30,9 @@ class AutoTeleApp:
         self.content_area: Optional[ui.column] = None
         self.is_loading_accounts = True
         self.main_container: Optional[ui.column] = None
+        
+        # Informations de mise à jour
+        self._update_info = None
 
         # Import des pages (lazy import pour éviter les imports circulaires)
         from .pages.accounts_page import AccountsPage
@@ -72,9 +75,6 @@ class AutoTeleApp:
             self.is_loading_accounts = False
 
             await self.show_page(self.current_page)
-            
-            # Vérifier les mises à jour après 5 secondes (non bloquant)
-            ui.timer(5.0, lambda: asyncio.create_task(self.check_for_updates()), once=True)
             
         except Exception as e:
             logger.error(f"Erreur initialisation: {e}")
@@ -267,6 +267,12 @@ class AutoTeleApp:
                 lambda: asyncio.create_task(self.initialize()),
                 once=True
             )
+            
+            # Vérifier les mises à jour après 10 secondes (non bloquant)
+            ui.timer(10.0, lambda: asyncio.create_task(self.check_for_updates()), once=True)
+            
+            # Timer pour vérifier périodiquement si une mise à jour est disponible
+            ui.timer(0.5, self._check_update_info, active=True)
 
     def setup_ui(self) -> None:
         """Configure l'interface utilisateur principale."""
@@ -291,56 +297,89 @@ class AutoTeleApp:
         """
         try:
             from utils.updater import get_updater
-            import webbrowser
             
             updater = get_updater()
             
-            # Vérifier (non bloquant)
-            update_available, message = await updater.check_for_updates(use_github=True)
+            # Vérifier (non bloquant) - utilise version.json local par défaut
+            update_available, message = await updater.check_for_updates(use_github=False)
             
             if update_available:
                 logger.info("Mise à jour disponible")
                 
-                # Afficher dialogue de mise à jour
-                with ui.dialog().props('persistent') as update_dialog:
-                    with ui.card().classes('p-6 max-w-md'):
-                        from ui.components.svg_icons import svg
-                        ui.html(svg('system_update', 64, '#3b82f6'))
-                        
-                        ui.label('🚀 Mise à jour disponible').classes(
-                            'text-2xl font-bold mb-3 mt-2'
-                        )
-                        
-                        ui.label(message).classes(
-                            'text-gray-700 mb-4 whitespace-pre-line text-sm'
-                        )
-                        
-                        if updater.is_update_required():
-                            ui.label('⚠️ Cette mise à jour est OBLIGATOIRE').classes(
-                                'text-red-600 font-bold mb-4'
-                            )
-                        
-                        with ui.row().classes('gap-3 w-full'):
-                            def open_download():
-                                download_url = updater.get_download_url()
-                                if download_url:
-                                    webbrowser.open(download_url)
-                                    ui.notify('Page de téléchargement ouverte', type='positive')
-                                update_dialog.close()
-                            
-                            ui.button(
-                                'Télécharger maintenant',
-                                on_click=open_download
-                            ).props('color=primary size=md').classes('flex-1')
-                            
-                            if not updater.is_update_required():
-                                ui.button(
-                                    'Plus tard',
-                                    on_click=update_dialog.close
-                                ).props('flat size=md')
+                # Stocker les informations pour l'affichage
+                # Le timer actif va détecter ce changement et afficher le dialogue
+                self._update_info = {
+                    'available': True,
+                    'message': message,
+                    'updater': updater
+                }
+            else:
+                logger.debug("Application à jour")
                 
-                update_dialog.open()
         except Exception as e:
             # Erreur silencieuse (pas critique)
             logger.debug(f"Vérification mise à jour échouée: {e}")
+    
+    def _check_update_info(self):
+        """Vérifie périodiquement si une mise à jour est disponible."""
+        if self._update_info and self._update_info.get('available'):
+            # Une mise à jour est disponible, afficher le dialogue
+            self._show_update_dialog()
+    
+    def _show_update_dialog(self):
+        """Affiche le dialogue de mise à jour dans le bon contexte UI."""
+        try:
+            if not self._update_info or not self._update_info.get('available'):
+                return
+            
+            # Marquer comme traité immédiatement pour éviter les doublons
+            message = self._update_info['message']
+            updater = self._update_info['updater']
+            self._update_info = None  # Nettoyer avant d'afficher
+            
+            import webbrowser
+            from ui.components.svg_icons import svg
+            
+            # Créer le dialogue dans le contexte UI approprié
+            with ui.dialog().props('persistent') as update_dialog:
+                with ui.card().classes('p-6 max-w-md'):
+                    ui.html(svg('system_update', 64, '#3b82f6'))
+                    
+                    ui.label('🚀 Mise à jour disponible').classes(
+                        'text-2xl font-bold mb-3 mt-2'
+                    )
+                    
+                    ui.label(message).classes(
+                        'text-gray-700 mb-4 whitespace-pre-line text-sm'
+                    )
+                    
+                    if updater.is_update_required():
+                        ui.label('⚠️ Cette mise à jour est OBLIGATOIRE').classes(
+                            'text-red-600 font-bold mb-4'
+                        )
+                    
+                    with ui.row().classes('gap-3 w-full'):
+                        def open_download():
+                            download_url = updater.get_download_url()
+                            if download_url:
+                                webbrowser.open(download_url)
+                                ui.notify('Page de téléchargement ouverte', type='positive')
+                            update_dialog.close()
+                        
+                        ui.button(
+                            'Télécharger maintenant',
+                            on_click=open_download
+                        ).props('color=primary size=md').classes('flex-1')
+                        
+                        if not updater.is_update_required():
+                            ui.button(
+                                'Plus tard',
+                                on_click=update_dialog.close
+                            ).props('flat size=md')
+            
+            update_dialog.open()
+            logger.info("Dialogue de mise à jour affiché")
+            
+        except Exception as e:
+            logger.error(f"Erreur affichage dialogue mise à jour: {e}")
 

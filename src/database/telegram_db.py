@@ -39,7 +39,8 @@ class TelegramDatabase:
         self.conn = sqlite3.connect(
             str(self.db_path),
             check_same_thread=False,  # Pour utilisation async
-            timeout=30.0  # Timeout de 30 secondes pour éviter "database is locked"
+            timeout=60.0,  # Timeout de 60 secondes pour éviter "database is locked"
+            isolation_level="DEFERRED"  # Meilleure gestion des transactions
         )
         
         # Optimisations SQLite
@@ -47,6 +48,7 @@ class TelegramDatabase:
         self.conn.execute("PRAGMA synchronous=NORMAL")  # Performance vs sécurité
         self.conn.execute("PRAGMA temp_store=MEMORY")  # Temp en mémoire
         self.conn.execute("PRAGMA mmap_size=30000000000")  # Memory-mapped I/O
+        self.conn.execute("PRAGMA busy_timeout=60000")  # 60 secondes en millisecondes
         
         self.conn.row_factory = sqlite3.Row  # Accès par nom de colonne
         

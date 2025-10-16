@@ -64,8 +64,8 @@ def get_logs_dir() -> Path:
 
 
 def get_config_dir() -> Path:
-    """Retourne le répertoire de configuration."""
-    return CONFIG_DIR
+    """Retourne le répertoire de configuration et le crée si nécessaire."""
+    return _ensure_dir_exists(CONFIG_DIR)
 
 
 def ensure_all_directories() -> None:

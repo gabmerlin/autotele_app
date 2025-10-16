@@ -16,8 +16,8 @@
 [Setup]
 ; === INFORMATIONS APPLICATION ===
 AppName=AutoTele
-AppVersion=1.4.0
-AppVerName=AutoTele 1.4.0
+AppVersion=2.0.1
+AppVerName=AutoTele 2.0.1
 AppPublisher=AutoTele Team
 AppPublisherURL=https://github.com/gabmerlin/autotele_app
 AppSupportURL=https://github.com/gabmerlin/autotele_app/issues
@@ -51,7 +51,7 @@ WizardSmallImageFile=assets\wizard_small.bmp
 
 ; === SORTIE ===
 OutputDir=installer_output
-OutputBaseFilename=AutoTele-Setup-v1.4.0
+OutputBaseFilename=AutoTele-Setup-v2.0.1
 
 ; === COMPRESSION (Maximum) ===
 Compression=lzma2/ultra64
@@ -108,6 +108,9 @@ Source: "LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Tests de securite (optionnel)
 Source: "tests\security_tests.py"; DestDir: "{app}\tests"; Flags: ignoreversion
+
+; Fichier de version pour l'auto-updater
+Source: "version.json"; DestDir: "{app}"; Flags: ignoreversion
 
 [Dirs]
 ; Creer les repertoires necessaires
@@ -242,7 +245,7 @@ french.SelectDirBrowseLabel=Pour continuer, cliquez sur Suivant. Pour sélection
 
 french.DiskSpaceGBLabel=L''installation nécessite au moins {#SetupSetting('NumGigabytes')} Go d''espace disque disponible.
 
-french.FinishedLabel=L''installation de [name] est terminée avec succès !%n%n AutoTele est maintenant prêt à être utilisé.%n%n Vous pouvez lancer l''application directement depuis le bureau ou le menu Démarrer.%n%n Pour plus d''informations, consultez README_INSTALLATEUR.txt dans le dossier d''installation.
+french.FinishedLabel=L''installation de [name] est terminée avec succès !%n%n✅ AutoTele 2.0 est maintenant prêt à être utilisé.%n%n🚀 Vous pouvez lancer l''application directement depuis le bureau ou le menu Démarrer.%n%n📖 Pour plus d''informations, consultez README_INSTALLATEUR.txt dans le dossier d''installation.
 
 french.ConfirmUninstall=Êtes-vous sûr de vouloir désinstaller complètement %1 et tous ses composants ?%n%nATTENTION: Vos sessions Telegram et logs seront conservés. Supprimez-les manuellement si nécessaire.
 

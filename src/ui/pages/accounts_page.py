@@ -318,7 +318,7 @@ class AccountsPage:
                             notify('Photo de profil mise à jour !', type='positive')
                             dialog.close()
                             # Rafraîchir la page
-                            ui.timer(0.2, lambda: self.app.show_page('comptes'), once=True)
+                            self.app.show_page('comptes')
                         else:
                             notify(f'Erreur: {error}', type='negative')
                     except Exception as e:
@@ -597,10 +597,9 @@ class AccountsPage:
                             notify('Paramètres sauvegardés ! Actualisation...', type='positive')
                             # Double rafraîchissement pour être sûr que ça prend
                             self.app.show_page('comptes')
-                            ui.timer(0.1, lambda: self.app.show_page('comptes'), once=True)
                         else:
                             notify('Paramètres sauvegardés !', type='positive')
-                            ui.timer(0.1, lambda: self.app.show_page('comptes'), once=True)
+                            self.app.show_page('comptes')
                         
                     except Exception as e:
                         logger.error(f"Erreur sauvegarde paramètres: {e}")

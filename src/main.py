@@ -97,6 +97,10 @@ def main() -> None:
     anti_debug = get_anti_debug()
     anti_debug.run_continuous_checks(interval=30)
     
+    # Créer tous les répertoires nécessaires (compatible PyInstaller)
+    from utils.paths import ensure_all_directories
+    ensure_all_directories()
+    
     # Configurer le dossier temp pour servir les fichiers uploadés
     temp_dir = get_temp_dir()
 

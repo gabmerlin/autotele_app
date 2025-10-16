@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 
 from utils.config import get_config
 from utils.logger import get_logger
+from utils.paths import get_sessions_dir
 
 
 class SessionManager:
@@ -15,23 +16,17 @@ class SessionManager:
         """Initialise le gestionnaire de sessions."""
         self.config = get_config()
         self.logger = get_logger()
-        self.sessions_dir = Path(self.config.get("paths.sessions_dir"))
-        self.sessions_dir.mkdir(exist_ok=True)
+        # CORRECTION : Utiliser get_sessions_dir() pour compatibilité PyInstaller
+        self.sessions_dir = get_sessions_dir()
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)
 
         self.index_file = self.sessions_dir / "sessions_index.json"
         self.sessions_index = self._load_index()
 
-        # Système de chiffrement AES-256 (SÉCURITÉ CRITIQUE)
-        # ⚠️ Les sessions Telegram DOIVENT être chiffrées pour éviter le vol de comptes
-        try:
-            from utils.encryption import get_encryption
-            self.encryption = get_encryption()
-            self.logger.info("Chiffrement des sessions active (AES-256 + PBKDF2)")
-        except ValueError as e:
-            self.logger.error(f"ERREUR CRITIQUE: Chiffrement desactive - {e}")
-            self.logger.error("ATTENTION: Les sessions sont stockees EN CLAIR - RISQUE DE SECURITE ELEVE")
-            self.logger.error("Veuillez definir AUTOTELE_ENCRYPTION_KEY dans votre fichier .env")
-            self.encryption = None
+        # CORRECTION : Utiliser uniquement le chiffrement natif de Telethon
+        # Telethon chiffre déjà les sessions SQLite, pas besoin de chiffrement supplémentaire
+        self.encryption = None
+        self.logger.info("Utilisation du chiffrement natif de Telethon pour les sessions")
     
     def _load_index(self) -> Dict:
         """Charge l'index des sessions depuis le fichier JSON."""
@@ -162,42 +157,15 @@ class SessionManager:
         """
         Retourne le chemin de la session pour TelegramClient.
 
-        Déchiffre automatiquement la session si le chiffrement est activé.
-
         Args:
             session_id: ID de la session.
 
         Returns:
-            str: Chemin du fichier de session (déchiffré si nécessaire).
+            str: Chemin du fichier de session (sans extension, Telethon ajoute .session).
         """
-        if not self.encryption:
-            return str(self.get_session_file_path(session_id,
-                                                   encrypted=False))
-
-        encrypted_path = self.get_session_file_path(session_id,
-                                                     encrypted=True)
-        decrypted_path = self.get_session_file_path(session_id,
-                                                     encrypted=False)
-
-        # Si le fichier chiffré existe, le déchiffrer temporairement
-        if encrypted_path.exists():
-            success, msg, path = self.encryption.decrypt_session_file(
-                encrypted_path,
-                decrypted_path
-            )
-            if success and path:
-                # Retourner sans .session (Telethon l'ajoute automatiquement)
-                return str(path.with_suffix(''))
-
-            self.logger.error(
-                f"Erreur déchiffrement session {session_id}: {msg}"
-            )
-            # Fallback sur fichier non chiffré si existe
-            if decrypted_path.exists():
-                return str(decrypted_path.with_suffix(''))
-
-        # Si aucun fichier n'existe, retourner le chemin attendu
-        return str(decrypted_path.with_suffix(''))
+        # Retourner le chemin sans .session (Telethon l'ajoute automatiquement)
+        session_path = self.sessions_dir / session_id
+        return str(session_path)
     
     def update_session_status(self, session_id: str, status: str) -> None:
         """Met à jour le statut d'une session."""
