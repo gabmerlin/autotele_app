@@ -1,0 +1,47 @@
+# UTF-8
+#
+# Métadonnées Windows pour AutoTele.exe
+# Affichées dans Propriétés > Détails de l'exécutable
+#
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    # Version du fichier (2.1.1.0)
+    filevers=(2, 1, 1, 0),
+    # Version du produit (2.1.1.0)
+    prodvers=(2, 1, 1, 0),
+    # Masque de flags
+    mask=0x3f,
+    # Flags - IMPORTANT: VOS_VERSION pour forcer l'icône
+    flags=0x0,
+    # Système d'exploitation (Windows NT)
+    OS=0x40004,
+    # Type de fichier (application)
+    fileType=0x1,
+    # Sous-type
+    subtype=0x0,
+    # Date (non utilisé)
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo(
+      [
+      StringTable(
+        u'040C04B0',  # Français
+        [
+          StringStruct(u'CompanyName', u'AutoTele Solutions'),
+          StringStruct(u'FileDescription', u'AutoTele - Gestionnaire Telegram Professionnel'),
+          StringStruct(u'FileVersion', u'2.1.1.0'),
+          StringStruct(u'InternalName', u'AutoTele'),
+          StringStruct(u'LegalCopyright', u'Copyright (C) 2025 AutoTele Solutions. Tous droits réservés.'),
+          StringStruct(u'LegalTrademarks', u'AutoTele est une marque déposée'),
+          StringStruct(u'OriginalFilename', u'AutoTele.exe'),
+          StringStruct(u'ProductName', u'AutoTele - Gestionnaire Telegram Professionnel'),
+          StringStruct(u'ProductVersion', u'2.1.1.0'),
+          StringStruct(u'Comments', u'Application légitime - Certifiée sécurisée | Chiffrement AES-256 | Conformité RGPD'),
+          StringStruct(u'Author', u'AutoTele Solutions'),
+          StringStruct(u'WebSite', u'https://autotele-solutions.com')
+        ])
+      ]),
+    VarFileInfo([VarStruct(u'Translation', [1036, 1200])])  # Français
+  ]
+)
