@@ -16,8 +16,8 @@
 [Setup]
 ; === INFORMATIONS APPLICATION ===
 AppName=AutoTele
-AppVersion=2.1.1
-AppVerName=AutoTele 2.1.1
+AppVersion=2.1.2
+AppVerName=AutoTele 2.1.2
 AppPublisher=AutoTele Team
 AppPublisherURL=https://github.com/gabmerlin/autotele_app
 AppSupportURL=https://github.com/gabmerlin/autotele_app/issues
@@ -51,7 +51,7 @@ WizardSmallImageFile=assets\wizard_small.bmp
 
 ; === SORTIE ===
 OutputDir=installer_output
-OutputBaseFilename=AutoTele-Setup-v2.1.1
+OutputBaseFilename=AutoTele-Setup-v2.1.2
 
 ; === COMPRESSION (Maximum) ===
 Compression=lzma2/ultra64
@@ -82,7 +82,7 @@ InfoBeforeFile=README_INSTALLATEUR.txt
 ; === DÉSINSTALLATION ===
 UninstallDisplayIcon={app}\AutoTele.exe
 UninstallFilesDir={app}\uninstall
-UninstallDisplayName=AutoTele 1.4.0
+UninstallDisplayName=AutoTele 2.1.2
 
 [Languages]
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
@@ -177,7 +177,7 @@ begin
     IsUpgradeInstallation := True;
     
     MsgText := 'AutoTele ' + OldVersion + ' est déjà installé.' + #13#10#13#10 +
-               'Voulez-vous le mettre à jour vers la version 1.4.0 ?' + #13#10#13#10 +
+               'Voulez-vous le mettre à jour vers la version 2.1.2 ?' + #13#10#13#10 +
                'IMPORTANT:' + #13#10 +
                '✓ Vos sessions Telegram seront préservées' + #13#10 +
                '✓ Votre configuration (.env) sera préservée' + #13#10 +
@@ -206,7 +206,7 @@ begin
     begin
       // Message pour première installation
       MsgBox('INSTALLATION TERMINEE !' + #13#10#13#10 +
-             'AutoTele v1.4.0 a ete installe avec succes.' + #13#10#13#10 +
+             'AutoTele v2.1.2 a ete installe avec succes.' + #13#10#13#10 +
              'TOUT EST PRE-CONFIGURE !' + #13#10#13#10 +
              'Vous pouvez lancer AutoTele immediatement :' + #13#10#13#10 +
              '1. Creez votre compte AutoTele' + #13#10 +
@@ -220,7 +220,7 @@ begin
     begin
       // Message pour mise à jour
 MsgBox('MISE A JOUR TERMINEE !' + #13#10#13#10 +
-             'AutoTele a ete mis a jour vers la version 1.4.0' + #13#10#13#10 +
+             'AutoTele a ete mis a jour vers la version 2.1.2' + #13#10#13#10 +
              'NOUVEAUTES :' + #13#10 +
              '✓ Configuration securisee et chiffree' + #13#10 +
              '✓ Messagerie ultra rapide et fluide' + #13#10 +

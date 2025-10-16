@@ -366,7 +366,11 @@ class AuthDialog:
     
     async def _show_reset_password(self):
         """Affiche le dialogue de réinitialisation de mot de passe"""
-        with ui.dialog() as reset_dialog, ui.card().classes('p-6'):
+        reset_dialog = ui.dialog()
+        # Forcer un z-index élevé pour apparaître au-dessus du dialogue de login
+        reset_dialog._props['style'] = 'z-index: 100000 !important;'
+        
+        with reset_dialog, ui.card().classes('p-6').style('z-index: 100001 !important;'):
             ui.label('Réinitialiser le mot de passe').classes('text-lg font-semibold')
             ui.label('Entrez votre email pour recevoir un lien de réinitialisation').classes('text-sm text-gray-600 mb-4')
             

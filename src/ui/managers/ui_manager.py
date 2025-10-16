@@ -129,7 +129,7 @@ class UIManager:
 
             # Footer
             with ui.column().classes('gap-1'):
-                ui.label('Version 2.1.1').classes('text-xs').style(
+                ui.label('Version 2.1.2').classes('text-xs').style(
                     'color: rgba(255, 255, 255, 0.5);'
                 )
                 ui.label('Pro Edition').classes(
