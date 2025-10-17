@@ -24,7 +24,7 @@ class AutoUpdater:
     CUSTOM_SERVER_URL = "https://autotele.qgchatting.com/updates/version.json"
     
     # URL de téléchargement par défaut (fallback)
-    DEFAULT_DOWNLOAD_URL = "https://autotele.qgchatting.com/updates/latest/AutoTele-Setup-v2.1.1.exe"
+    DEFAULT_DOWNLOAD_URL = "https://autotele.qgchatting.com/updates/latest/AutoTele-Setup-v2.1.5.exe"
     
     # GitHub Releases (fallback secondaire)
     GITHUB_API_URL = "https://api.github.com/repos/gabmerlin/autotele_app/releases/latest"

@@ -99,13 +99,14 @@ class AuthService:
             else:
                 return False, f"Erreur: {error_msg}"
     
-    async def sign_in(self, email: str, password: str) -> tuple[bool, str]:
+    async def sign_in(self, email: str, password: str, remember_me: bool = True) -> tuple[bool, str]:
         """
         Connecte un utilisateur existant
         
         Args:
             email: Email de l'utilisateur
             password: Mot de passe
+            remember_me: Si True, sauvegarde la session localement
         
         Returns:
             (succès, message)
@@ -132,8 +133,9 @@ class AuthService:
                     }
                 }
                 
-                # Sauvegarder la session localement
-                await self._save_session()
+                # Sauvegarder la session localement UNIQUEMENT si remember_me est True
+                if remember_me:
+                    await self._save_session()
                 
                 return True, "Connexion réussie"
             else:
@@ -178,14 +180,51 @@ class AuthService:
             
             # Vérifier l'expiration
             expires_at = session_data.get('session', {}).get('expires_at', 0)
-            if datetime.now().timestamp() >= expires_at:
-                self._session_file.unlink()
-                return False
+            refresh_token = session_data.get('session', {}).get('refresh_token')
             
-            # Restaurer la session dans Supabase
+            # Si la session a expiré, tenter de la rafraîchir automatiquement
+            if datetime.now().timestamp() >= expires_at:
+                if refresh_token and self.supabase:
+                    try:
+                        # Tenter de rafraîchir la session avec le refresh_token
+                        logger.info("Session expirée, tentative de rafraîchissement automatique...")
+                        response = self.supabase.auth.refresh_session(refresh_token)
+                        
+                        if response and response.session:
+                            # Mettre à jour avec la nouvelle session
+                            self.current_user = {
+                                "id": response.user.id,
+                                "email": response.user.email,
+                                "metadata": response.user.user_metadata,
+                                "session": {
+                                    "access_token": response.session.access_token,
+                                    "refresh_token": response.session.refresh_token,
+                                    "expires_at": response.session.expires_at
+                                }
+                            }
+                            
+                            # Sauvegarder la nouvelle session
+                            await self._save_session()
+                            logger.info("Session rafraîchie avec succès")
+                            return True
+                        else:
+                            # Le refresh a échoué, supprimer la session
+                            logger.warning("Échec du rafraîchissement de session")
+                            self._session_file.unlink()
+                            return False
+                            
+                    except Exception as refresh_error:
+                        logger.error(f"Erreur lors du rafraîchissement de session: {refresh_error}")
+                        self._session_file.unlink()
+                        return False
+                else:
+                    # Pas de refresh_token disponible, supprimer la session
+                    self._session_file.unlink()
+                    return False
+            
+            # La session n'a pas expiré, la restaurer normalement
             if self.supabase:
                 access_token = session_data.get('session', {}).get('access_token')
-                refresh_token = session_data.get('session', {}).get('refresh_token')
                 
                 if access_token and refresh_token:
                     self.supabase.auth.set_session(access_token, refresh_token)

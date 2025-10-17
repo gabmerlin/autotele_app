@@ -2,8 +2,10 @@
 Page de gestion des messages programmés.
 """
 import asyncio
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Set, Tuple
+from datetime import datetime
 from nicegui import ui
+from telethon.tl.functions.messages import GetScheduledHistoryRequest, DeleteScheduledMessagesRequest
 
 from core.telegram.manager import TelegramManager
 from ui.components.dialogs import ConfirmDialog
@@ -31,6 +33,11 @@ class ScheduledMessagesPage:
         self.current_messages: List[Dict] = []
         self.selected_chat_id: Optional[int] = None  # Filtre par groupe
         self.groups_menu_container: Optional[ui.row] = None  # Container pour le menu des groupes
+        
+        # Système de sélection pour édition
+        self.selected_messages: Set[Tuple[int, int]] = set()  # Set de (chat_id, message_id)
+        self.action_bar_container: Optional[ui.row] = None  # Barre d'action pour édition en lot
+        self.checkboxes: Dict[Tuple[int, int], ui.checkbox] = {}  # Référence aux checkboxes
     
     def render(self) -> None:
         """Rend la page."""
@@ -154,6 +161,10 @@ class ScheduledMessagesPage:
         
         with self.messages_container:
             if self.current_messages:
+                # Réinitialiser la sélection et les checkboxes
+                self.selected_messages.clear()
+                self.checkboxes.clear()
+                
                 # Boutons d'action
                 with ui.row().classes('w-full gap-3 mb-4'):
                     async def refresh() -> None:
@@ -165,10 +176,19 @@ class ScheduledMessagesPage:
                             ui.html(svg('sync', 18, 'var(--accent)'))
                             ui.label('Rafraîchir')
                     
+                    # Sélectionner tout
+                    with ui.button(on_click=self._select_all_everywhere).props('outline').style('color: #10b981;'):
+                        with ui.row().classes('items-center gap-2'):
+                            ui.html(svg('check_circle', 18, '#10b981'))
+                            ui.label('Tout sélectionner')
+                    
                     with ui.button(on_click=self._delete_all_everywhere).props('color=red'):
                         with ui.row().classes('items-center gap-2'):
                             ui.html(svg('delete_forever', 18, 'white'))
                             ui.label('Tout supprimer (TOUS)')
+                
+                # Barre d'action pour l'édition (apparaît quand des messages sont sélectionnés)
+                self.action_bar_container = ui.row().classes('w-full mb-4')
                 
                 # Menu de filtrage par groupe
                 self._render_groups_filter_menu()
@@ -238,6 +258,19 @@ class ScheduledMessagesPage:
                     'px-3 py-1 rounded text-sm font-semibold'
                 ).style('background: rgba(30, 58, 138, 0.1); color: var(--primary);')
                 
+                # Bouton pour sélectionner tout le groupe
+                def make_select_group(cid: int, msgs: List[Dict]):
+                    def select_group():
+                        self._select_all_in_group(cid, msgs)
+                    return select_group
+                
+                with ui.button(
+                    on_click=make_select_group(chat_id, chat_data['messages'])
+                ).props('flat dense').style('color: #10b981;'):
+                    with ui.row().classes('items-center gap-1'):
+                        ui.html(svg('check_circle', 16, '#10b981'))
+                        ui.label('Sélectionner tout')
+                
                 def make_delete_all(cid: int, title: str, acc, messages: List[Dict]):
                     async def on_confirm() -> None:
                         try:
@@ -287,6 +320,19 @@ class ScheduledMessagesPage:
             'background: var(--bg-secondary); border: 1px solid var(--border);'
         ):
             with ui.row().classes('w-full items-start gap-3'):
+                # Checkbox de sélection
+                key = (chat_id, msg['message_id'])
+                
+                def make_checkbox_handler(cid: int, mid: int):
+                    def handler(e):
+                        self._update_selection_state(cid, mid, e.value)
+                    return handler
+                
+                checkbox = ui.checkbox(value=False).props('dense').on_value_change(
+                    make_checkbox_handler(chat_id, msg['message_id'])
+                )
+                self.checkboxes[key] = checkbox
+                
                 with ui.column().classes('flex-1 gap-2'):
                     # Date et heure
                     ui.label(msg['date'].strftime('%d/%m/%Y %H:%M')).classes('font-bold').style(
@@ -305,30 +351,43 @@ class ScheduledMessagesPage:
                             'color: var(--accent);'
                         )
                 
-                # Bouton supprimer
-                def make_delete(cid: int, mid: int, acc):
-                    async def delete() -> None:
-                        try:
-                            ui.notify('Suppression...', type='info')
-                            success, error = await acc.delete_scheduled_messages(cid, [mid])
-                            if success:
-                                ui.notify('Message supprimé', type='positive')
-                                self.current_messages = [
-                                    m for m in self.current_messages
-                                    if not (m['chat_id'] == cid and m['message_id'] == mid)
-                                ]
-                                self.display_messages()
-                            else:
-                                ui.notify(f'Erreur: {error}', type='negative')
-                        except Exception as e:
-                            logger.error(f"Erreur suppression message: {e}")
-                            ui.notify(f'Erreur: {e}', type='negative')
-                    return delete
-                
-                with ui.button(on_click=make_delete(chat_id, msg['message_id'], account)).props(
-                    'flat dense round'
-                ).style('color: var(--danger);'):
-                    ui.html(svg('close', 18, '#ef4444'))
+                # Boutons d'action
+                with ui.column().classes('gap-1'):
+                    # Bouton éditer
+                    def make_edit(cid: int, mid: int, txt: str, dt: datetime):
+                        def edit():
+                            self._show_single_edit_dialog(cid, mid, txt, dt)
+                        return edit
+                    
+                    with ui.button(on_click=make_edit(chat_id, msg['message_id'], msg['text'], msg['date'])).props(
+                        'flat dense round'
+                    ).style('color: #10b981;'):
+                        ui.html(svg('edit', 18, '#10b981'))
+                    
+                    # Bouton supprimer
+                    def make_delete(cid: int, mid: int, acc):
+                        async def delete() -> None:
+                            try:
+                                ui.notify('Suppression...', type='info')
+                                success, error = await acc.delete_scheduled_messages(cid, [mid])
+                                if success:
+                                    ui.notify('Message supprimé', type='positive')
+                                    self.current_messages = [
+                                        m for m in self.current_messages
+                                        if not (m['chat_id'] == cid and m['message_id'] == mid)
+                                    ]
+                                    self.display_messages()
+                                else:
+                                    ui.notify(f'Erreur: {error}', type='negative')
+                            except Exception as e:
+                                logger.error(f"Erreur suppression message: {e}")
+                                ui.notify(f'Erreur: {e}', type='negative')
+                        return delete
+                    
+                    with ui.button(on_click=make_delete(chat_id, msg['message_id'], account)).props(
+                        'flat dense round'
+                    ).style('color: var(--danger);'):
+                        ui.html(svg('close', 18, '#ef4444'))
     
     def _delete_all_everywhere(self) -> None:
         """Supprime TOUS les messages de TOUS les groupes."""
@@ -481,6 +540,10 @@ class ScheduledMessagesPage:
         
         with self.messages_container:
             if self.current_messages:
+                # Réinitialiser la sélection et les checkboxes
+                self.selected_messages.clear()
+                self.checkboxes.clear()
+                
                 # Boutons d'action
                 with ui.row().classes('w-full gap-3 mb-4'):
                     async def refresh() -> None:
@@ -492,10 +555,19 @@ class ScheduledMessagesPage:
                             ui.html(svg('sync', 18, 'var(--accent)'))
                             ui.label('Rafraîchir tout')
                     
+                    # Sélectionner tout
+                    with ui.button(on_click=self._select_all_everywhere).props('outline').style('color: #10b981;'):
+                        with ui.row().classes('items-center gap-2'):
+                            ui.html(svg('check_circle', 18, '#10b981'))
+                            ui.label('Tout sélectionner')
+                    
                     with ui.button(on_click=self._delete_all_from_all_accounts).props('color=red'):
                         with ui.row().classes('items-center gap-2'):
                             ui.html(svg('delete_forever', 18, 'white'))
                             ui.label('Tout supprimer (TOUS LES COMPTES)')
+                
+                # Barre d'action pour l'édition (apparaît quand des messages sont sélectionnés)
+                self.action_bar_container = ui.row().classes('w-full mb-4')
                 
                 # Menu de filtrage par groupe
                 self._render_groups_filter_menu()
@@ -735,7 +807,7 @@ class ScheduledMessagesPage:
             'border: 2px solid #0ea5e9; border-radius: 12px;'
         ):
             with ui.row().classes('items-center gap-2 mb-3'):
-                ui.html(svg('filter_list', 20, '#0369a1'))
+                ui.html(svg('search', 20, '#0369a1'))
                 ui.label('Filtrer par groupe :').classes('text-lg font-bold').style(
                     'color: #0369a1;'
                 )
@@ -795,4 +867,472 @@ class ScheduledMessagesPage:
                                 title = title[:22] + '...'
                             ui.label(title).classes('text-sm')
                             ui.label(f'({group_data["count"]})').classes('text-xs')
+    
+    def _update_selection_state(self, chat_id: int, message_id: int, is_checked: bool) -> None:
+        """Met à jour l'état de sélection d'un message."""
+        key = (chat_id, message_id)
+        if is_checked:
+            self.selected_messages.add(key)
+        else:
+            self.selected_messages.discard(key)
+        
+        # Mettre à jour la barre d'action
+        self._update_action_bar()
+    
+    def _update_action_bar(self) -> None:
+        """Met à jour la barre d'action selon le nombre de messages sélectionnés."""
+        if not self.action_bar_container:
+            return
+        
+        count = len(self.selected_messages)
+        self.action_bar_container.clear()
+        
+        if count > 0:
+            with self.action_bar_container:
+                with ui.card().classes('w-full p-4').style(
+                    'background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); '
+                    'border: 2px solid #3b82f6; border-radius: 12px;'
+                ):
+                    with ui.row().classes('w-full items-center gap-4'):
+                        # Compteur
+                        with ui.row().classes('items-center gap-2 flex-1'):
+                            ui.html(svg('check_circle', 24, '#3b82f6'))
+                            ui.label(f'{count} message(s) sélectionné(s)').classes('text-lg font-bold').style(
+                                'color: #1e40af;'
+                            )
+                        
+                        # Boutons d'action
+                        with ui.row().classes('gap-2'):
+                            # Tout désélectionner
+                            with ui.button(on_click=self._deselect_all).props('outline').style(
+                                'color: #6b7280; border-color: #9ca3af;'
+                            ):
+                                with ui.row().classes('items-center gap-2'):
+                                    ui.html(svg('close', 18, '#6b7280'))
+                                    ui.label('Tout désélectionner')
+                            
+                            # Éditer la sélection
+                            with ui.button(on_click=self._show_bulk_edit_dialog).props('color=primary'):
+                                with ui.row().classes('items-center gap-2'):
+                                    ui.html(svg('edit', 18, 'white'))
+                                    ui.label('Modifier la sélection')
+    
+    def _deselect_all(self) -> None:
+        """Désélectionne tous les messages."""
+        self.selected_messages.clear()
+        # Décocher toutes les checkboxes
+        for checkbox in self.checkboxes.values():
+            checkbox.value = False
+        self._update_action_bar()
+    
+    def _select_all_in_group(self, chat_id: int, messages: List[Dict]) -> None:
+        """Sélectionne tous les messages d'un groupe."""
+        for msg in messages:
+            key = (chat_id, msg['message_id'])
+            self.selected_messages.add(key)
+            if key in self.checkboxes:
+                self.checkboxes[key].value = True
+        self._update_action_bar()
+    
+    def _select_all_everywhere(self) -> None:
+        """Sélectionne tous les messages de tous les groupes."""
+        for msg in self.current_messages:
+            key = (msg['chat_id'], msg['message_id'])
+            self.selected_messages.add(key)
+            if key in self.checkboxes:
+                self.checkboxes[key].value = True
+        self._update_action_bar()
+    
+    def _show_bulk_edit_dialog(self) -> None:
+        """Affiche le dialogue d'édition en lot."""
+        if not self.selected_messages:
+            notify('Aucun message sélectionné', type='warning')
+            return
+        
+        dialog = ui.dialog()
+        
+        with dialog, ui.card().classes('w-full p-6').style('min-width: 600px;'):
+            with ui.column().classes('w-full gap-4'):
+                # En-tête
+                with ui.row().classes('w-full items-center gap-3 mb-2'):
+                    ui.html(svg('edit', 32, '#3b82f6'))
+                    ui.label('Modifier les messages sélectionnés').classes('text-2xl font-bold').style(
+                        'color: #1e40af;'
+                    )
+                
+                ui.label(f'{len(self.selected_messages)} message(s) seront modifiés').classes('text-sm').style(
+                    'color: #6b7280;'
+                )
+                
+                ui.separator()
+                
+                # Champ texte
+                ui.label('Nouveau texte du message').classes('text-lg font-semibold mt-2')
+                ui.label('Ce texte remplacera le contenu de tous les messages sélectionnés').classes('text-sm mb-3').style(
+                    'color: #6b7280;'
+                )
+                
+                new_text_input_html = '''
+                <textarea 
+                    id="bulk_edit_text_input" 
+                    rows="6"
+                    placeholder="Entrez le nouveau texte..."
+                    style="
+                        width: 100%;
+                        min-height: 150px;
+                        min-width: 500px;
+                        background: #ffffff;
+                        border: 2px solid #d1d5db;
+                        border-radius: 8px;
+                        font-size: 14px;
+                        padding: 12px;
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                        resize: both;
+                    "
+                ></textarea>
+                '''
+                ui.html(new_text_input_html)
+                
+                # Message d'erreur
+                error_label = ui.label('').classes('text-red-500 text-sm mt-2')
+                
+                ui.separator().classes('mt-4')
+                
+                # Boutons
+                with ui.row().classes('w-full gap-2 mt-4'):
+                    ui.button('Annuler', on_click=dialog.close).props('flat').classes('flex-1')
+                    
+                    async def apply_bulk_edit():
+                        error_label.text = ''
+                        
+                        # Récupérer le nouveau texte avec timeout adaptatif
+                        try:
+                            # Timeout adaptatif selon le nombre de messages
+                            timeout = max(2.0, len(self.selected_messages) * 0.1)
+                            new_text = await ui.run_javascript('document.getElementById("bulk_edit_text_input").value', timeout=timeout) or ""
+                            new_text = str(new_text).strip()
+                            if not new_text:
+                                error_label.text = 'Le nouveau texte ne peut pas être vide'
+                                return
+                        except asyncio.TimeoutError:
+                            error_label.text = 'Timeout - Veuillez réessayer avec moins de messages'
+                            return
+                        except Exception as e:
+                            logger.error(f"Erreur lecture texte: {e}")
+                            error_label.text = 'Erreur de lecture du texte'
+                            return
+                        
+                        # Fermer le dialogue et appliquer les modifications
+                        dialog.close()
+                        await self._apply_bulk_edit(new_text, None)
+                    
+                    ui.button('Appliquer', on_click=apply_bulk_edit).props('color=primary').classes('flex-1')
+        
+        dialog.open()
+    
+    async def _apply_bulk_edit(self, new_text: Optional[str], new_schedule: Optional[datetime]) -> None:
+        """Applique les modifications en lot - VERSION SIMPLIFIÉE."""
+        total = len(self.selected_messages)
+        success_count = 0
+        error_count = 0
+        errors = []
+        
+        # Afficher un message de progression persistant
+        ui.notify('Messages en cours de modification, veuillez patienter...', type='info')
+        
+        # Ne pas rafraîchir automatiquement - cela coupe les modifications
+        # Le rafraîchissement se fera après les modifications
+        
+        # Grouper par compte ET par chat pour optimiser
+        messages_by_account_and_chat = {}
+        for chat_id, message_id in self.selected_messages:
+            # Trouver le message dans current_messages
+            msg = next((m for m in self.current_messages if m['chat_id'] == chat_id and m['message_id'] == message_id), None)
+            if msg:
+                account_id = msg.get('account_session_id', self.selected_account)
+                key = (account_id, chat_id)
+                if key not in messages_by_account_and_chat:
+                    messages_by_account_and_chat[key] = []
+                messages_by_account_and_chat[key].append((message_id, msg))
+        
+        # Appliquer les modifications par groupe (compte + chat) pour optimiser
+        for (account_id, chat_id), messages in messages_by_account_and_chat.items():
+            account = self.telegram_manager.get_account(account_id or self.selected_account)
+            if not account:
+                error_count += len(messages)
+                continue
+            
+            try:
+                # Récupérer TOUS les messages programmés du chat UNE SEULE FOIS
+                peer = await account.client.get_input_entity(chat_id)
+                result = await account.client(GetScheduledHistoryRequest(peer=peer, hash=0))
+                
+                # Créer un dictionnaire des messages actuels pour accès rapide
+                current_messages_dict = {}
+                if hasattr(result, 'messages') and result.messages:
+                    for msg in result.messages:
+                        if msg and msg.id:
+                            current_messages_dict[msg.id] = msg
+                
+                # Modifier tous les messages de ce chat avec rate limiting
+                for idx, (message_id, msg) in enumerate(messages):
+                    try:
+                        current_message = current_messages_dict.get(message_id)
+                        if not current_message:
+                            error_count += 1
+                            errors.append(f"Message {message_id}: introuvable")
+                            continue
+                        
+                        # Déterminer les nouvelles valeurs
+                        text_to_use = new_text if new_text is not None else (getattr(current_message, 'message', None) or getattr(current_message, 'text', None) or "")
+                        schedule_to_use = new_schedule if new_schedule is not None else current_message.date
+                        
+                        # Supprimer l'ancien message
+                        await account.client(DeleteScheduledMessagesRequest(peer=peer, id=[message_id]))
+                        
+                        # Délai entre suppression et recréation (rate limit Telegram)
+                        await asyncio.sleep(0.1)
+                        
+                        # Recréer le message
+                        await account.client.send_message(
+                            entity=peer,
+                            message=text_to_use,
+                            schedule=schedule_to_use
+                        )
+                        
+                        success_count += 1
+                        
+                        # Rate limiting : Délai de 0.65s entre chaque message
+                        # Total = 0.75s par message = 10 msg en 7.5s = 2.67 req/sec (safe)
+                        if idx < len(messages) - 1:
+                            await asyncio.sleep(0.65)
+                        
+                    except Exception as e:
+                        logger.error(f"Erreur édition message {message_id}: {e}")
+                        error_count += 1
+                        errors.append(f"Message {message_id}: {str(e)}")
+                
+            except Exception as e:
+                logger.error(f"Erreur récupération messages chat {chat_id}: {e}")
+                error_count += len(messages)
+                errors.append(f"Chat {chat_id}: {str(e)}")
+        
+        # Afficher le résultat
+        if success_count > 0:
+            notify(f'{success_count} message(s) modifié(s) avec succès !', type='positive')
+        
+        if error_count > 0:
+            error_msg = f'{error_count} erreur(s) lors de la modification'
+            if errors:
+                error_msg += f'\n\nPremières erreurs:\n' + '\n'.join(errors[:3])
+            notify(error_msg, type='negative')
+        
+        # Rafraîchir l'UI après modification (méthode simple et fiable)
+        await self._update_ui_after_modification()
+        
+        # Désélectionner tout
+        self._deselect_all()
+    
+    async def _update_ui_after_modification(self) -> None:
+        """Met à jour l'UI après modification - OPTIMISÉE."""
+        try:
+            # Délai minimal pour s'assurer que les modifications sont prises en compte
+            modified_count = len(self.selected_messages)
+            delay = 0.3  # Délai fixe court
+            await asyncio.sleep(delay)
+            
+            # Stratégie optimisée selon le volume
+            if modified_count <= 10:
+                # Mise à jour ciblée pour petits volumes
+                await self._refresh_targeted_messages()
+            else:
+                # Rechargement complet pour gros volumes
+                if self.selected_account:
+                    await self.load_scheduled_messages()
+                else:
+                    await self.scan_all_accounts()
+            
+            # Forcer le rafraîchissement de l'UI
+            self.display_messages()
+            
+            notify(f'Interface mise à jour ({modified_count} messages)', type='positive')
+            
+        except Exception as e:
+            logger.error(f"Erreur mise à jour UI après modification: {e}")
+            # Fallback : rechargement complet
+            self.display_messages()
+    
+    async def _refresh_targeted_messages(self) -> None:
+        """Rafraîchit seulement les messages modifiés - VERSION OPTIMISÉE."""
+        if not self.selected_messages:
+            return
+        
+        try:
+            # Grouper par compte et chat pour minimiser les requêtes
+            messages_by_account_and_chat = {}
+            for chat_id, message_id in self.selected_messages:
+                msg = next((m for m in self.current_messages if m['chat_id'] == chat_id and m['message_id'] == message_id), None)
+                if msg:
+                    account_id = msg.get('account_session_id', self.selected_account)
+                    key = (account_id, chat_id)
+                    if key not in messages_by_account_and_chat:
+                        messages_by_account_and_chat[key] = []
+                    messages_by_account_and_chat[key].append(message_id)
+            
+            # Rafraîchir chaque groupe de messages (une requête par chat)
+            updated_count = 0
+            for (account_id, chat_id), message_ids in messages_by_account_and_chat.items():
+                account = self.telegram_manager.get_account(account_id or self.selected_account)
+                if not account:
+                    continue
+                
+                try:
+                    # Récupérer seulement les messages de ce chat
+                    peer = await account.client.get_input_entity(chat_id)
+                    result = await account.client(GetScheduledHistoryRequest(peer=peer, hash=0))
+                    
+                    if hasattr(result, 'messages') and result.messages:
+                        # Mettre à jour seulement les messages modifiés dans current_messages
+                        for msg in result.messages:
+                            if msg and msg.id in message_ids:
+                                # Trouver et mettre à jour le message dans current_messages
+                                for i, current_msg in enumerate(self.current_messages):
+                                    if (current_msg['chat_id'] == chat_id and 
+                                        current_msg['message_id'] == msg.id):
+                                        self.current_messages[i] = {
+                                            "message_id": msg.id,
+                                            "chat_id": chat_id,
+                                            "chat_title": current_msg['chat_title'],
+                                            "text": getattr(msg, 'message', None) or getattr(msg, 'text', None) or "[Fichier]",
+                                            "date": msg.date,
+                                            "has_media": hasattr(msg, 'media') and msg.media is not None,
+                                            "media_type": type(msg.media).__name__ if hasattr(msg, 'media') and msg.media else None,
+                                            "account_session_id": account_id
+                                        }
+                                        updated_count += 1
+                                        break
+                
+                except Exception as e:
+                    logger.warning(f"Erreur rafraîchissement messages pour chat {chat_id}: {e}")
+                    continue
+            
+            # Rafraîchir l'affichage seulement si des messages ont été mis à jour
+            if updated_count > 0:
+                self.display_messages()
+                notify(f'{updated_count} message(s) mis à jour', type='positive')
+            else:
+                # Si aucun message n'a été mis à jour, forcer le rechargement complet
+                logger.warning("Aucun message mis à jour - rechargement complet")
+                if self.selected_account:
+                    await self.load_scheduled_messages()
+                else:
+                    await self.scan_all_accounts()
+            
+        except Exception as e:
+            logger.error(f"Erreur rafraîchissement messages ciblés: {e}")
+            # Fallback : recharger tout
+            if self.selected_account:
+                await self.load_scheduled_messages()
+            else:
+                await self.scan_all_accounts()
+    
+    # Méthodes obsolètes supprimées pour simplifier le code
+    
+    def _show_single_edit_dialog(self, chat_id: int, message_id: int, current_text: str, current_date: datetime) -> None:
+        """Affiche le dialogue d'édition pour un seul message."""
+        dialog = ui.dialog()
+        
+        with dialog, ui.card().classes('w-full p-6').style('min-width: 600px;'):
+            with ui.column().classes('w-full gap-4'):
+                # En-tête
+                with ui.row().classes('w-full items-center gap-3 mb-2'):
+                    ui.html(svg('edit', 32, '#10b981'))
+                    ui.label('Modifier le message').classes('text-2xl font-bold').style(
+                        'color: #059669;'
+                    )
+                
+                ui.separator()
+                
+                # Texte du message
+                ui.label('Texte du message').classes('text-lg font-semibold mt-2')
+                ui.label('Modifiez le contenu du message').classes('text-sm mb-3').style(
+                    'color: #6b7280;'
+                )
+                
+                single_text_html = f'''
+                <textarea 
+                    id="single_edit_text_input" 
+                    rows="6"
+                    style="
+                        width: 100%;
+                        min-height: 150px;
+                        min-width: 500px;
+                        background: #ffffff;
+                        border: 2px solid #d1d5db;
+                        border-radius: 8px;
+                        font-size: 14px;
+                        padding: 12px;
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                        resize: both;
+                    "
+                >{current_text}</textarea>
+                '''
+                ui.html(single_text_html)
+                
+                # Message d'erreur
+                error_label = ui.label('').classes('text-red-500 text-sm mt-2')
+                
+                ui.separator().classes('mt-4')
+                
+                # Boutons
+                with ui.row().classes('w-full gap-2 mt-4'):
+                    ui.button('Annuler', on_click=dialog.close).props('flat').classes('flex-1')
+                    
+                    async def apply_single_edit():
+                        error_label.text = ''
+                        
+                        # Récupérer le nouveau texte avec timeout adaptatif
+                        try:
+                            new_text = await ui.run_javascript('document.getElementById("single_edit_text_input").value', timeout=3.0) or ""
+                            new_text = str(new_text).strip()
+                            if not new_text:
+                                error_label.text = 'Le texte ne peut pas être vide'
+                                return
+                        except asyncio.TimeoutError:
+                            error_label.text = 'Timeout - Veuillez réessayer'
+                            return
+                        except Exception as e:
+                            logger.error(f"Erreur lecture texte: {e}")
+                            error_label.text = 'Erreur de lecture du texte'
+                            return
+                        
+                        # Fermer le dialogue
+                        dialog.close()
+                        
+                        # Appliquer la modification
+                        account = self.telegram_manager.get_account(self.selected_account)
+                        if not account:
+                            notify('Compte introuvable', type='negative')
+                            return
+                        
+                        # Afficher un message de progression
+                        ui.notify('Message en cours de modification, veuillez patienter...', type='info')
+                        
+                        success, error = await account.edit_scheduled_message(
+                            chat_id,
+                            message_id,
+                            new_text=new_text,
+                            new_schedule_date=None
+                        )
+                        
+                        if success:
+                            notify('Message modifié avec succès !', type='positive')
+                            # Rafraîchir l'UI complètement pour s'assurer que les changements sont visibles
+                            await self._update_ui_after_modification()
+                        else:
+                            notify(f'Erreur: {error}', type='negative')
+                    
+                    ui.button('Enregistrer', on_click=apply_single_edit).props('color=primary').classes('flex-1')
+        
+        dialog.open()
 

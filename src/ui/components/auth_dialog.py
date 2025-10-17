@@ -29,6 +29,7 @@ class AuthDialog:
         self.password_input = None
         self.password_confirm_input = None
         self.name_input = None
+        self.remember_me_checkbox = None
         self.error_label = None
         self.submit_button = None
         self.container = None
@@ -186,6 +187,15 @@ class AuthDialog:
         '''
         self.password_input = ui.html(password_html)
         
+        # Checkbox "Se souvenir de moi" (mode login uniquement)
+        if self.mode == 'login':
+            with ui.row().classes('w-full items-center mt-2 gap-2'):
+                self.remember_me_checkbox = ui.checkbox('Se souvenir de moi', value=True) \
+                    .classes('text-sm') \
+                    .props('dense')
+                ui.label('(rester connecté jusqu\'à déconnexion manuelle)') \
+                    .classes('text-xs text-gray-500')
+        
         # Confirmation mot de passe (signup uniquement) - HTML natif aussi
         if self.mode == 'signup':
             ui.label('Confirmer le mot de passe').classes('text-sm font-medium text-gray-700 mt-3')
@@ -291,7 +301,11 @@ class AuthDialog:
             email = str(email).strip()
             password = str(password)
             
-            success, message = await self.auth_service.sign_in(email, password)
+            # Récupérer l'état de la checkbox "Se souvenir de moi"
+            remember_me = self.remember_me_checkbox.value if self.remember_me_checkbox else True
+            
+            # Passer remember_me à sign_in
+            success, message = await self.auth_service.sign_in(email, password, remember_me)
             
             if success:
                 # Appeler le callback de succès (qui gérera la fermeture du dialogue)

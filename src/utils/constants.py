@@ -5,7 +5,7 @@ from typing import Final
 
 # Version de l'application
 APP_NAME: Final[str] = "AutoTele"
-APP_VERSION: Final[str] = "2.1.1"
+APP_VERSION: Final[str] = "2.1.5"
 
 # Limites Telegram
 TELEGRAM_MAX_MESSAGE_LENGTH: Final[int] = 4096

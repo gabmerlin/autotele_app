@@ -4,7 +4,7 @@ REM Usage: build_simple.bat
 REM Optimisé pour réduire les faux positifs antivirus
 
 echo ========================================
-echo COMPILATION OPTIMISEE - AutoTele v2.1.3
+echo COMPILATION OPTIMISEE - AutoTele v2.1.5
 echo ========================================
 echo.
 echo Mode: Sans obfuscation (pour reduction faux positifs antivirus)
@@ -46,7 +46,7 @@ echo ========================================
 echo.
 echo FICHIER FINAL:
 echo   dist\AutoTele.exe
-echo   installer_output\AutoTele-Setup-v2.1.3.exe
+echo   installer_output\AutoTele-Setup-v2.1.5.exe
 echo.
 echo SECURITE:
 echo   [x] Configuration chiffree (AES-256)

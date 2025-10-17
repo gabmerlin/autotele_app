@@ -1,4 +1,5 @@
 """Classe représentant un compte Telegram connecté."""
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -468,7 +469,7 @@ class TelegramAccount:
     
     async def get_all_scheduled_messages(self) -> List[Dict]:
         """
-        Récupère TOUS les messages programmés du compte.
+        Récupère TOUS les messages programmés du compte - VERSION COMPLÈTE.
         
         Returns:
             List[Dict]: Liste des messages programmés
@@ -479,20 +480,19 @@ class TelegramAccount:
         try:
             all_scheduled = []
             dialogs = await self.get_dialogs()
-            all_scheduled = []
             
-            for i, dialog in enumerate(dialogs):
+            for dialog in dialogs:
                 chat_id = dialog['id']
                 chat_title = dialog['title']
                 
                 try:
-                    # Essayer avec l'API bas niveau
-                    try:
-                        peer = await self.client.get_input_entity(chat_id)
-                        result = await self.client(GetScheduledHistoryRequest(peer=peer, hash=0))
-                        
-                        if hasattr(result, 'messages') and result.messages:
-                            for msg in result.messages:
+                    # MÉTHODE PRINCIPALE : API bas niveau (plus complète)
+                    peer = await self.client.get_input_entity(chat_id)
+                    result = await self.client(GetScheduledHistoryRequest(peer=peer, hash=0))
+                    
+                    if hasattr(result, 'messages') and result.messages:
+                        for msg in result.messages:
+                            if msg and msg.id:  # Vérification de sécurité
                                 scheduled_info = {
                                     "message_id": msg.id,
                                     "chat_id": chat_id,
@@ -503,27 +503,15 @@ class TelegramAccount:
                                     "media_type": type(msg.media).__name__ if hasattr(msg, 'media') and msg.media else None
                                 }
                                 all_scheduled.append(scheduled_info)
-                    except Exception as api_error:
-                        # Fallback : iter_messages
-                        async for msg in self.client.iter_messages(chat_id, scheduled=True):
-                            scheduled_info = {
-                                "message_id": msg.id,
-                                "chat_id": chat_id,
-                                "chat_title": chat_title,
-                                "text": msg.text or msg.message or "[Fichier]",
-                                "date": msg.date,
-                                "has_media": msg.media is not None,
-                                "media_type": type(msg.media).__name__ if msg.media else None
-                            }
-                            all_scheduled.append(scheduled_info)
                     
-                    # Petit délai pour éviter les rate limits
-                    import asyncio
-                    await asyncio.sleep(0.05)
+                    # Délai minimal pour éviter les rate limits
+                    await asyncio.sleep(0.1)
                     
                 except Exception as e:
+                    logger.warning(f"Erreur récupération messages pour {chat_title}: {e}")
                     continue
             
+            # Trier par date
             all_scheduled.sort(key=lambda x: x['date'])
             return all_scheduled
             
@@ -569,6 +557,80 @@ class TelegramAccount:
             error_msg = f"Erreur suppression messages: {e}"
             logger.error(error_msg)
             return False, error_msg
+    
+    async def edit_scheduled_message(
+        self,
+        chat_id: int,
+        message_id: int,
+        new_text: Optional[str] = None,
+        new_schedule_date: Optional[datetime] = None
+    ) -> Tuple[bool, str]:
+        """
+        Modifie un message programmé (texte et/ou date).
+        
+        Args:
+            chat_id: ID du chat
+            message_id: ID du message à modifier
+            new_text: Nouveau texte du message (None = garder l'ancien)
+            new_schedule_date: Nouvelle date de programmation (None = garder l'ancienne)
+            
+        Returns:
+            Tuple[bool, str]: (success, error_message)
+        """
+        if not self.is_connected:
+            return False, "Compte non connecté"
+        
+        try:
+            if isinstance(chat_id, str):
+                chat_id = int(chat_id)
+            
+            # Récupérer le message actuel pour obtenir ses propriétés
+            entity = self._entity_cache.get(chat_id)
+            if entity is None:
+                entity = await self.client.get_input_entity(chat_id)
+                self._entity_cache[chat_id] = entity
+            
+            # MÉTHODE SIMPLE : Suppression + Recréation (100% fiable)
+            # 1. Récupérer le message actuel avec la même méthode que get_all_scheduled_messages
+            peer = await self.client.get_input_entity(chat_id)
+            result = await self.client(GetScheduledHistoryRequest(peer=peer, hash=0))
+            
+            current_message = None
+            if hasattr(result, 'messages') and result.messages:
+                for msg in result.messages:
+                    if msg and msg.id == message_id:
+                        current_message = msg
+                        break
+            
+            if not current_message:
+                return False, "Message programmé introuvable - Rafraîchissez la liste"
+            
+            # 2. Déterminer les nouvelles valeurs
+            text_to_use = new_text if new_text is not None else (getattr(current_message, 'message', None) or getattr(current_message, 'text', None) or "")
+            schedule_to_use = new_schedule_date if new_schedule_date is not None else current_message.date
+            
+            # 3. Supprimer l'ancien message
+            await self.client(DeleteScheduledMessagesRequest(peer=entity, id=[message_id]))
+            
+            # 4. Recréer le message
+            await self.client.send_message(
+                entity=entity,
+                message=text_to_use,
+                schedule=schedule_to_use
+            )
+            
+            return True, "Message programmé modifié avec succès"
+            
+        except Exception as e:
+            logger.error(f"Erreur modification message {message_id}: {e}")
+            
+            # Messages d'erreur simplifiés
+            if "not found" in str(e).lower():
+                return False, "Message programmé introuvable - Rafraîchissez la liste"
+            elif "flood" in str(e).lower():
+                return False, "Trop de requêtes - Attendez quelques secondes"
+            else:
+                return False, f"Erreur: {str(e)}"
     
     async def resolve_username(self, username: str) -> Optional[Dict]:
         """

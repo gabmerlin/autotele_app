@@ -5,7 +5,7 @@ from typing import Optional
 from nicegui import ui
 
 from ui.components.svg_icons import svg
-from utils.constants import APP_NAME, ICON_ACCOUNT, ICON_MESSAGE, ICON_SCHEDULED
+from utils.constants import APP_NAME, APP_VERSION, ICON_ACCOUNT, ICON_MESSAGE, ICON_SCHEDULED
 
 
 class UIManager:
@@ -129,7 +129,7 @@ class UIManager:
 
             # Footer
             with ui.column().classes('gap-1'):
-                ui.label('Version 2.1.3').classes('text-xs').style(
+                ui.label(f'Version {APP_VERSION}').classes('text-xs').style(
                     'color: rgba(255, 255, 255, 0.5);'
                 )
                 ui.label('Pro Edition').classes(
