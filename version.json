@@ -1,7 +1,7 @@
 {
   "version": "2.1.5",
   "build": "20251017",
-  "download_url": "https://autotele.qgchatting.com/updates/latest",
+  "download_url": "https://autotele.qgchatting.com/updates/latest/AutoTele-Setup-v2.1.5.exe",
   "direct_exe_url": "https://autotele.qgchatting.com/updates/latest/AutoTele-Setup-v2.1.5.exe",
   "release_notes": "🎉 Version 2.1.5 - Édition & Optimisations\n\n✨ NOUVELLES FONCTIONNALITÉS:\n• ✏️ Édition de messages programmés (texte modifiable)\n• 📝 Sélection multiple : par groupe, individuel ou tous\n• 🔄 Option 'Se souvenir de moi' à la connexion\n• ⚡ Optimisation majeure des performances d'édition\n\n🐛 CORRECTIONS:\n• ✅ Rate limiting Telegram respecté (pas de timeout)\n• ✅ Interface mise à jour automatiquement après modification\n• ✅ Icônes SVG corrigées dans les filtres\n• ✅ Messages de progression pendant les modifications\n• ✅ Gestion optimisée des modifications en lot (jusqu'à 100+ messages)",
   "required": false,
